@@ -13,9 +13,10 @@
 - Q: How should OS/browser reduced-motion preferences be handled? → A: B (Map `prefers-reduced-motion` to `lowResource` mode automatically)
 - Q: What should the avatar display if WebGL is unavailable? → A: Text message (Show a text message indicating WebGL is unavailable.)
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Ambient Presence on Page (Priority: P1)
+
 A casual visitor opens a page containing the avatar and should immediately perceive a subtle, human-like presence without explicit interaction.
 
 **Why this priority**: Primary user-facing outcome — first-impression presence drives perceived value.
@@ -30,6 +31,7 @@ A casual visitor opens a page containing the avatar and should immediately perce
 ---
 
 ### User Story 2 - Low-Resource Mode (Priority: P2)
+
 A mobile or constrained-device visitor should experience a presence-appropriate avatar that preserves battery/CPU while maintaining believable motion.
 
 **Why this priority**: Ensures feature is practical across device classes and does not harm UX.
@@ -43,6 +45,7 @@ A mobile or constrained-device visitor should experience a presence-appropriate 
 ---
 
 ### User Story 3 - Developer Control & Observability (Priority: P3)
+
 A developer embedding the avatar can configure behavior intensity, persistence, and telemetry for diagnostics.
 
 **Why this priority**: Makes the component integrable and debuggable in products.
@@ -61,7 +64,7 @@ A developer embedding the avatar can configure behavior intensity, persistence, 
 - How does the system behave across tab visibility changes, device sleep/wake, and page navigation?
 - How does persistence behave if storage is cleared or unavailable? (See Assumptions / Clarifications.)
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -83,7 +86,7 @@ A developer embedding the avatar can configure behavior intensity, persistence, 
 - **Runtime Controller**: Orchestrates rendering, performance mode, and responds to visibility changes.
 - **Telemetry/Diagnostics**: Event emitter for behavior phases, errors, and performance samples.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
@@ -104,5 +107,3 @@ A developer embedding the avatar can configure behavior intensity, persistence, 
 - Favor modular boundaries: rendering layer, behavior generator, and persistence must be decoupled so projects can swap rendering or behavior implementations.
 - Provide instrumentation hooks to capture sampled pose summaries and performance metrics to validate resource usage.
 - Accessibility mapping: runtime SHOULD observe `prefers-reduced-motion` and enable `lowResource` mode which reduces macro actions and sampling frequency to respect user preferences.
-
-

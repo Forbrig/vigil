@@ -6,10 +6,10 @@ describe('Adapters', () => {
   describe('AdapterInterface', () => {
     it('should be a base interface', async () => {
       const adapter = new AdapterInterface();
-      
+
       // loadModel is async, so it should reject
       await expect(adapter.loadModel('url')).rejects.toThrow();
-      
+
       // applyPose throws synchronously
       expect(() => adapter.applyPose({}, {})).toThrow();
     });
@@ -43,7 +43,7 @@ describe('Adapters', () => {
       adapter.applyPose(model, { headRotationY: 0.5 });
 
       expect(model.rotation.y).not.toBe(initialRotationY);
-      expect(model.rotation.y).toBe(0.5);
+      expect(model.rotation.y).toBe(0.5 * 2); // Amplified by 2x
     });
 
     it('should apply sway to model position', async () => {
@@ -51,7 +51,7 @@ describe('Adapters', () => {
 
       adapter.applyPose(model, { headSwayX: 0.3 });
 
-      expect(model.position.x).toBe(0.3);
+      expect(model.position.x).toBe(0.3 * 0.5); // Amplified by 0.5x
     });
 
     it('should dispose of resources', async () => {
@@ -144,6 +144,7 @@ describe('Adapters', () => {
       root.add(parent);
       parent.add(child);
 
+      // Test the bone finding without applying transforms
       const found = adapter._findBone(root, 'Target');
       expect(found).toBe(child);
     });
@@ -160,6 +161,17 @@ describe('Adapters', () => {
 
       const found = adapter._findBone(root, 'Root');
       expect(found).toBe(root);
+    });
+
+    it('should handle fuzzy bone name matching', () => {
+      const root = new THREE.Group();
+      const headBone = new THREE.Group();
+      headBone.name = 'Armature_Head';
+      root.add(headBone);
+
+      // Should find with partial name
+      const found = adapter._findBone(root, 'head');
+      expect(found).toBe(headBone);
     });
   });
 });

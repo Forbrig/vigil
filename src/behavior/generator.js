@@ -1,6 +1,6 @@
 /**
  * Procedural Behavior Generator
- * 
+ *
  * Generates realistic idle animations using layered noise and weighted state transitions.
  * Combines micro-movements (continuous noise-driven transforms) with macro-actions
  * (event-driven state changes) to avoid mechanical repetition while maintaining
@@ -11,11 +11,7 @@ import { createNoise2D } from 'simplex-noise';
 
 export class BehaviorGenerator {
   constructor(config = {}) {
-    const {
-      seed = Math.random(),
-      intensity = 'normal',
-      lowResource = false,
-    } = config;
+    const { seed = Math.random(), intensity = 'normal', lowResource = false } = config;
 
     this.seed = seed;
     this.intensity = intensity;
@@ -24,7 +20,7 @@ export class BehaviorGenerator {
     this.macroState = 'idle';
     this.macroStateStartTime = 0;
     this.macroStateChangedAt = -Infinity;
-    
+
     // Initialize PRNG with seed for deterministic behavior
     this.rng = new SimpleSeededRandom(seed);
     // Create a seeded random function for deterministic noise generation
@@ -33,12 +29,37 @@ export class BehaviorGenerator {
     this.noise = createNoise2D(random);
 
     // Micro-primitives: noise-driven parameters
+    // These control both head position and limb rotations
+    // Frequencies are slightly different L/R to create natural variation
+    // Phases are set to create opposing limb movements (e.g., left arm forward when right arm back)
     this.microPrimitives = [
+      // Head and upper body
       { name: 'headSwayX', frequency: 0.3, amplitude: 0.15, phase: 0 },
       { name: 'headSwayZ', frequency: 0.25, amplitude: 0.12, phase: 0.5 },
+      { name: 'headTiltZ', frequency: 0.28, amplitude: 0.08, phase: 0.2 },
       { name: 'eyeBlinkIntensity', frequency: 1.2, amplitude: 1.0, phase: 1.0 },
       { name: 'breathingAmplitude', frequency: 0.4, amplitude: 0.1, phase: 0.3 },
       { name: 'shoulderSway', frequency: 0.35, amplitude: 0.08, phase: 0.7 },
+
+      // Upper arms - opposing movement (180° phase difference)
+      { name: 'leftArmRotationZ', frequency: 0.32, amplitude: 0.18, phase: 0.0 },
+      { name: 'rightArmRotationZ', frequency: 0.34, amplitude: 0.16, phase: Math.PI }, // Opposite phase
+
+      // Forearms - follow arms with slight delay
+      { name: 'leftForearmRotationZ', frequency: 0.28, amplitude: 0.12, phase: 0.3 },
+      { name: 'rightForearmRotationZ', frequency: 0.26, amplitude: 0.12, phase: Math.PI + 0.3 },
+
+      // Hands - minor oscillation
+      { name: 'leftHandRotationX', frequency: 0.22, amplitude: 0.08, phase: 0.5 },
+      { name: 'rightHandRotationX', frequency: 0.24, amplitude: 0.08, phase: Math.PI + 0.5 },
+
+      // Legs - slower than arms, opposing movement
+      { name: 'leftLegRotationZ', frequency: 0.19, amplitude: 0.12, phase: 0.2 },
+      { name: 'rightLegRotationZ', frequency: 0.21, amplitude: 0.12, phase: Math.PI + 0.2 },
+
+      // Feet - small rotation to show weight shift
+      { name: 'leftFootRotationX', frequency: 0.25, amplitude: 0.06, phase: 0.4 },
+      { name: 'rightFootRotationX', frequency: 0.23, amplitude: 0.06, phase: Math.PI + 0.4 },
     ];
 
     // Macro-state machine
@@ -68,9 +89,7 @@ export class BehaviorGenerator {
       },
       lookDown: {
         duration: { min: 1000, max: 2500 },
-        nextStates: [
-          { state: 'idle', weight: 1.0 },
-        ],
+        nextStates: [{ state: 'idle', weight: 1.0 }],
       },
     };
 
@@ -90,12 +109,9 @@ export class BehaviorGenerator {
 
     // Update macro state if duration exceeded
     const currentMacroConfig = this.macroStates[this.macroState];
-    const elapsedInState = (this.elapsed * 1000) - this.macroStateStartTime;
-    
-    if (
-      elapsedInState >
-      (currentMacroConfig.duration.max + this.rng.nextFloat() * 500)
-    ) {
+    const elapsedInState = this.elapsed * 1000 - this.macroStateStartTime;
+
+    if (elapsedInState > currentMacroConfig.duration.max + this.rng.nextFloat() * 500) {
       this._transitionMacroState();
     }
 
@@ -261,7 +277,7 @@ class SimpleSeededRandom {
   nextFloat() {
     const x = Math.sin(this.seed) * 10000;
     this.seed = (x - Math.floor(x)) * 10000;
-    return (x - Math.floor(x));
+    return x - Math.floor(x);
   }
 
   nextInt(min, max) {

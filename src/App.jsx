@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import AvatarCanvas from './components/AvatarCanvas';
 import { GLTFAdapter, MockAdapter } from './adapters/gltfAdapter';
 import './styles/main.scss';
@@ -15,7 +15,7 @@ const AVATAR_MODELS = {
     url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb',
     adapter: 'gltf',
   },
-  'robot': {
+  robot: {
     name: '🤖 Simple Robot',
     url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/SimpleMeshes/glTF-Binary/SimpleMeshes.glb',
     adapter: 'gltf',
@@ -44,13 +44,15 @@ const App = () => {
   const [useCustomUrl, setUseCustomUrl] = useState(false);
 
   // Determine which model to use
-  const modelConfig = useCustomUrl 
+  const modelConfig = useCustomUrl
     ? { name: 'Custom URL', url: customUrl, adapter: 'gltf' }
     : AVATAR_MODELS[selectedModel];
 
-  const adapter = modelConfig.adapter === 'mock' 
-    ? new MockAdapter()
-    : new GLTFAdapter();
+  // Create adapter only when needed, not on every render
+  const adapter = useMemo(
+    () => (modelConfig.adapter === 'mock' ? new MockAdapter() : new GLTFAdapter()),
+    [modelConfig.adapter]
+  );
 
   const handleEvent = (event) => {
     console.log('[Avatar Event]', event);
@@ -241,11 +243,11 @@ const App = () => {
           >
             {config.lowResource ? '✓ Low Resource Mode' : 'Low Resource Mode'}
           </button>
-          <span style={{ fontSize: '12px', color: '#666' }}>
-            Seed: {config.seed}
-          </span>
+          <span style={{ fontSize: '12px', color: '#666' }}>Seed: {config.seed}</span>
           <button
-            onClick={() => setConfig((prev) => ({ ...prev, seed: Math.floor(Math.random() * 10000) }))}
+            onClick={() =>
+              setConfig((prev) => ({ ...prev, seed: Math.floor(Math.random() * 10000) }))
+            }
             style={{
               padding: '8px 12px',
               backgroundColor: '#f0f0f0',

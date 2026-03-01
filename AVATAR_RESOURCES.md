@@ -12,13 +12,13 @@ The updated app now includes **model selection**! You can:
 
 ## 📦 Presets Available
 
-| Model | Description | Use Case |
-|-------|-------------|----------|
-| **🟩 Mock (Green Box)** | Simple placeholder | Testing without loading models |
-| **🎭 Damaged Helmet** | Metallic 3D model | Testing rigged models |
-| **🤖 Simple Robot** | Low-poly character | Performance testing |
-| **📦 Animated Box** | Morphing cube | Testing animations |
-| **👤 Rigged Figure** | Full humanoid skeleton | **Recommended for testing** |
+| Model                   | Description            | Use Case                       |
+| ----------------------- | ---------------------- | ------------------------------ |
+| **🟩 Mock (Green Box)** | Simple placeholder     | Testing without loading models |
+| **🎭 Damaged Helmet**   | Metallic 3D model      | Testing rigged models          |
+| **🤖 Simple Robot**     | Low-poly character     | Performance testing            |
+| **📦 Animated Box**     | Morphing cube          | Testing animations             |
+| **👤 Rigged Figure**    | Full humanoid skeleton | **Recommended for testing**    |
 
 ---
 
@@ -66,6 +66,7 @@ The updated app now includes **model selection**! You can:
 If you find a model in another format (FBX, OBJ, etc.):
 
 ### Online Conversion
+
 1. **Babylon.js Sandbox**: https://sandbox.babylonjs.com/
    - Drag & drop upload
    - Export as GLB
@@ -75,6 +76,7 @@ If you find a model in another format (FBX, OBJ, etc.):
    - Drag & drop, export as GLB
 
 ### Local Conversion (Node.js)
+
 ```bash
 # Install converter
 npm install -g gltf-transform
@@ -89,12 +91,14 @@ gltf-transform export model.gltf model.glb
 ## 📍 How to Test in the App
 
 ### Test Presets
+
 1. Run `npm run dev`
 2. Open http://localhost:5173
 3. Use the **Avatar Model** dropdown
 4. Adjust animation intensity with buttons
 
 ### Test Custom URLs
+
 1. Click **"Load Custom URL"** button
 2. Paste your GLB/GLTF URL
 3. Click back outside the input to load
@@ -123,17 +127,20 @@ https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Rigge
 ## 🐛 Troubleshooting
 
 ### Model not loading?
+
 - Check browser console (F12) for errors
 - Verify URL is publicly accessible
 - Ensure it's GLB or GLTF format
 - Check CORS (same-origin or CORS-enabled URL)
 
 ### Model loads but no animation?
+
 - This is expected! The behavior generator applies pose transforms
 - Not all models have bones in the naming convention we search for
 - Open console to see telemetry: `[Avatar Event]` logs
 
 ### Animation looks wrong?
+
 - The generator searches for common bone names (head, spine, etc.)
 - Your model might have different bone names
 - Try adjusting animation intensity levels

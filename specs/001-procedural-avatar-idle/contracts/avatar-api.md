@@ -24,7 +24,7 @@ Events
 Example usage
 
 ```js
-const handle = AvatarWidget({ intensity: 'subtle', seed: 42, onEvent: e => console.log(e) });
+const handle = AvatarWidget({ intensity: 'subtle', seed: 42, onEvent: (e) => console.log(e) });
 // later
 handle.setIntensity('animated');
 ```

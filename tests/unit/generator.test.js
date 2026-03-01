@@ -149,9 +149,7 @@ describe('BehaviorGenerator', () => {
       const animatedAmplitudes = generator.microPrimitives.map((p) => p.amplitude);
 
       // At least some primitives should have different (greater) amplitudes
-      const anyIncreased = animatedAmplitudes.some(
-        (amp, i) => amp > originalAmplitudes[i]
-      );
+      const anyIncreased = animatedAmplitudes.some((amp, i) => amp > originalAmplitudes[i]);
       expect(anyIncreased).toBe(true);
     });
   });
@@ -173,9 +171,7 @@ describe('BehaviorGenerator', () => {
       const lowResPose = generator.update(16);
 
       // Low-resource amplitudes should be <= normal
-      expect(Math.abs(lowResPose.headSwayX)).toBeLessThanOrEqual(
-        Math.abs(normalPose.headSwayX)
-      );
+      expect(Math.abs(lowResPose.headSwayX)).toBeLessThanOrEqual(Math.abs(normalPose.headSwayX));
     });
   });
 

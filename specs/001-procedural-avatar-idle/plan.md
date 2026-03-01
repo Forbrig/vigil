@@ -68,4 +68,3 @@ frontend/
 ## Complexity Tracking
 
 No constitution violations identified. If a later need arises to add a small server for telemetry or persistence, we will justify the added project and provide migration steps.
-
