@@ -105,12 +105,27 @@ export class GLTFAdapter extends AdapterInterface {
     // Use SkeletonUtils to properly clone rigged models with intact skeletons
     const scene = SkeletonUtils.clone(gltf.scene);
 
+    this._cacheBindPose(scene);
+
     // If the model has animations, store them for later use
     if (gltf.animations && gltf.animations.length > 0) {
       scene.animations = gltf.animations;
     }
 
     return scene;
+  }
+
+  _cacheBindPose(model) {
+    model.traverse((node) => {
+      if (node.isBone) {
+        // Cache bind pose only once
+        if (!node.userData.bindRotation) {
+          node.userData.bindRotation = node.rotation.clone();
+          node.userData.bindPosition = node.position.clone();
+          node.userData.bindScale = node.scale.clone();
+        }
+      }
+    });
   }
 
   /**
