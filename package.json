@@ -7,7 +7,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:ui": "playwright test",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
     "frontend:dev": "vite",
     "frontend:build": "vite build",
     "frontend:preview": "vite preview",
@@ -28,7 +29,10 @@
     "eslint": "^8.0.0",
     "prettier": "^3.0.0",
     "vitest": "^0.30.0",
+    "@vitejs/plugin-react": "^4.0.0",
     "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "jsdom": "^22.0.0",
     "playwright": "^1.30.0"
   }
 }

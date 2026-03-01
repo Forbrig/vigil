@@ -8,7 +8,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { PerspectiveCamera, Lighting } from '@react-three/drei';
+import { PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import BehaviorGenerator from '../behavior/generator';
 import { MockAdapter } from '../adapters/gltfAdapter';
@@ -194,7 +194,9 @@ export const AvatarCanvas = React.forwardRef(
           
           <PerspectiveCamera makeDefault position={[0, 0.5, 1.5]} fov={75} />
           
-          <Lighting />
+          {/* Basic lighting setup */}
+          <ambientLight intensity={0.5} />
+          <directionalLight position={[5, 5, 5]} intensity={1} />
           
           <AvatarScene
             config={config}

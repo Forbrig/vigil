@@ -7,7 +7,7 @@
  * computational efficiency.
  */
 
-import { ImprovedNoise } from 'simplex-noise';
+import { createNoise2D } from 'simplex-noise';
 
 export class BehaviorGenerator {
   constructor(config = {}) {
@@ -27,7 +27,10 @@ export class BehaviorGenerator {
     
     // Initialize PRNG with seed for deterministic behavior
     this.rng = new SimpleSeededRandom(seed);
-    this.noise = new ImprovedNoise();
+    // Create a seeded random function for deterministic noise generation
+    const seededRng = new SimpleSeededRandom(seed);
+    const random = () => seededRng.nextFloat();
+    this.noise = createNoise2D(random);
 
     // Micro-primitives: noise-driven parameters
     this.microPrimitives = [
@@ -117,7 +120,7 @@ export class BehaviorGenerator {
 
     for (const primitive of this.microPrimitives) {
       const t = elapsed * primitive.frequency;
-      const noiseValue = this.noise.perlin2(t, primitive.phase);
+      const noiseValue = this.noise(t, primitive.phase);
       const smoothedValue = noiseValue * primitive.amplitude;
 
       pose[primitive.name] = this.lowResource ? smoothedValue * 0.5 : smoothedValue;
