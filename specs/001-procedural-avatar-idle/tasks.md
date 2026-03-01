@@ -20,11 +20,11 @@
 
 ## Phase 3: User Story 1 - Ambient Presence on Page (Priority: P1)
 
-- [ ] T011 [US1] Implement idle behavior in `generator.js`
-- [ ] T012 [US1] Integrate `generator.js` with `AvatarCanvas.jsx`
-- [ ] T013 [US1] Add visibility handling in `AvatarCanvas.jsx`
-- [ ] T014 [US1] Write unit tests for `generator.js`
-- [ ] T015 [US1] Write integration tests for `AvatarCanvas.jsx`
+- [x] T011 [US1] Implement idle behavior in `generator.js`
+- [x] T012 [US1] Integrate `generator.js` with `AvatarCanvas.jsx`
+- [x] T013 [US1] Add visibility handling in `AvatarCanvas.jsx`
+- [x] T014 [US1] Write unit tests for `generator.js`
+- [x] T015 [US1] Write integration tests for `AvatarCanvas.jsx`
 
 ## Phase 4: User Story 3 - Developer Control & Observability (Priority: P3)
 
