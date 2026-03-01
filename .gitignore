@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+.vite/
+.tsc/
+
+# Development
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.env
+.env.local
+.env.*.local
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+log/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
