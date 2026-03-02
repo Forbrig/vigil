@@ -1,9 +1,8 @@
 /**
  * AvatarCanvas Component
  *
- * React component that renders a 3D avatar in a Three.js canvas using react-three/fiber.
- * Manages the procedural behavior generator, model rendering, and integration with the
- * embedding API.
+ * React component that renders a 3D avatar skeleton in a Three.js canvas using react-three/fiber.
+ * Manages the procedural behavior generator and skeleton rendering.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -11,7 +10,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import BehaviorGenerator from '../behavior/generator';
-import { MockAdapter } from '../adapters/gltfAdapter';
+import { SkeletonAdapter } from '../adapters/gltfAdapter';
 import './AvatarCanvas.scss';
 
 /**
@@ -24,7 +23,6 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
   const clockRef = useRef(new THREE.Clock());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { camera } = useThree();
 
   // Initialize generator and load model
   useEffect(() => {
@@ -45,50 +43,19 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
           lowResource: config.lowResource || false,
         });
 
-        // Load model - use provided URL or default to a public GLTF model
-        const modelUrl =
-          config.modelUrl ||
-          'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/RiggedFigure/glTF-Binary/RiggedFigure.glb';
+        // Create the fixed skeleton
+        console.log('Creating fixed skeleton...');
+        const skeleton = await adapter.loadModel();
+        console.log('Skeleton created successfully');
 
-        console.log('Loading model from:', modelUrl);
-        const loadedModel = await adapter.loadModel(modelUrl);
-        console.log('Model loaded successfully:', loadedModel);
-
-        localModelRef.current = loadedModel;
+        localModelRef.current = skeleton;
         // Update parent ref for external control
         if (modelRef) {
-          modelRef.current = loadedModel;
+          modelRef.current = skeleton;
         }
 
-        if (groupRef.current && loadedModel) {
-          // Position the model at origin
-          try {
-            // Don't scale - keep models at their natural size
-            // Just center on XZ plane
-            const bbox = new THREE.Box3();
-            loadedModel.traverse((node) => {
-              if (node instanceof THREE.Mesh) {
-                bbox.expandByObject(node);
-              }
-            });
-
-            if (!bbox.isEmpty()) {
-              const center = bbox.getCenter(new THREE.Vector3());
-              if (Math.abs(center.x) > 0.001) loadedModel.translateX(-center.x);
-              if (Math.abs(center.z) > 0.001) loadedModel.translateZ(-center.z);
-
-              const size = bbox.getSize(new THREE.Vector3());
-              console.log('Model positioned at origin. Size:', {
-                x: size.x.toFixed(2),
-                y: size.y.toFixed(2),
-                z: size.z.toFixed(2),
-              });
-            }
-          } catch (err) {
-            console.warn('Could not position model:', err);
-          }
-
-          groupRef.current.add(loadedModel);
+        if (groupRef.current && skeleton) {
+          groupRef.current.add(skeleton);
         }
 
         setIsLoading(false);
@@ -205,10 +172,14 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
  * This component is embeddable into any React application.
  */
 export const AvatarCanvas = React.forwardRef(
-  ({ config = {}, adapter = new MockAdapter(), onEvent = () => {}, onReady = () => {} }, ref) => {
+  (
+    { config = {}, adapter = new SkeletonAdapter(), onEvent = () => {}, onReady = () => {} },
+    ref
+  ) => {
     const canvasRef = useRef(null);
     const modelRef = useRef(null);
-    const [showBones, setShowBones] = useState(false);
+    const [showBones, setShowBones] = useState(true);
+    const [showMesh, setShowMesh] = useState(false);
 
     const handleRef = useRef({
       setIntensity: async (level) => {
@@ -238,6 +209,41 @@ export const AvatarCanvas = React.forwardRef(
           }
           setShowBones(visible);
         }
+      },
+      attachMesh: async (options = {}) => {
+        if (modelRef.current && adapter && adapter.attachMesh) {
+          adapter.attachMesh(modelRef.current, options);
+          setShowMesh(true);
+          return true;
+        }
+        return false;
+      },
+      toggleMesh: async () => {
+        if (modelRef.current && adapter && adapter.toggleMesh) {
+          const newState = adapter.toggleMesh(modelRef.current);
+          setShowMesh(newState);
+          return newState;
+        }
+        return false;
+      },
+      setMesh: async (visible) => {
+        if (modelRef.current && adapter && adapter.setMeshVisible) {
+          adapter.setMeshVisible(modelRef.current, visible);
+          setShowMesh(visible);
+        }
+      },
+      attachGLTFMesh: async (url, options = {}) => {
+        if (modelRef.current && adapter && adapter.attachGLTFMesh) {
+          try {
+            await adapter.attachGLTFMesh(modelRef.current, url, options);
+            setShowMesh(true);
+            return true;
+          } catch (error) {
+            console.error('Failed to attach GLTF mesh:', error);
+            return false;
+          }
+        }
+        return false;
       },
       dispose: async () => {
         console.log('Disposing avatar');
@@ -275,11 +281,24 @@ export const AvatarCanvas = React.forwardRef(
           <button
             className={`bone-toggle-btn ${showBones ? 'active' : ''}`}
             onClick={async () => {
-              const newState = await handleRef.current.toggleBones();
+              await handleRef.current.toggleBones();
             }}
             title="Toggle skeleton visualization"
           >
             {showBones ? '✓ Bones' : 'Bones'}
+          </button>
+          <button
+            className={`bone-toggle-btn ${showMesh ? 'active' : ''}`}
+            onClick={async () => {
+              if (!showMesh) {
+                await handleRef.current.attachMesh({ color: 0xffdbac });
+              } else {
+                await handleRef.current.toggleMesh();
+              }
+            }}
+            title="Toggle body mesh"
+          >
+            {showMesh ? '✓ Mesh' : 'Mesh'}
           </button>
         </div>
       </div>

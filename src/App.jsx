@@ -1,58 +1,18 @@
 import React, { useRef, useState, useMemo } from 'react';
 import AvatarCanvas from './components/AvatarCanvas';
-import { GLTFAdapter, MockAdapter } from './adapters/gltfAdapter';
+import { SkeletonAdapter } from './adapters/gltfAdapter';
 import './styles/main.scss';
-
-// Free 3D humanoid avatar model URLs
-const AVATAR_MODELS = {
-  mock: {
-    name: '🟩 Mock (Green Box)',
-    url: null,
-    adapter: 'mock',
-  },
-  'damaged-helmet': {
-    name: '🎭 Damaged Helmet',
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb',
-    adapter: 'gltf',
-  },
-  robot: {
-    name: '🤖 Simple Robot',
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/SimpleMeshes/glTF-Binary/SimpleMeshes.glb',
-    adapter: 'gltf',
-  },
-  'box-animated': {
-    name: '📦 Animated Box',
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/AnimatedMorphCube/glTF-Binary/AnimatedMorphCube.glb',
-    adapter: 'gltf',
-  },
-  'rigged-figure': {
-    name: '👤 Rigged Figure (Recommended)',
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/RiggedFigure/glTF-Binary/RiggedFigure.glb',
-    adapter: 'gltf',
-  },
-};
 
 const App = () => {
   const avatarRef = useRef(null);
-  const [selectedModel, setSelectedModel] = useState('rigged-figure');
-  const [customUrl, setCustomUrl] = useState('');
   const [config, setConfig] = useState({
     intensity: 'normal',
     seed: Math.floor(Math.random() * 10000),
     lowResource: false,
   });
-  const [useCustomUrl, setUseCustomUrl] = useState(false);
 
-  // Determine which model to use
-  const modelConfig = useCustomUrl
-    ? { name: 'Custom URL', url: customUrl, adapter: 'gltf' }
-    : AVATAR_MODELS[selectedModel];
-
-  // Create adapter only when needed, not on every render
-  const adapter = useMemo(
-    () => (modelConfig.adapter === 'mock' ? new MockAdapter() : new GLTFAdapter()),
-    [modelConfig.adapter]
-  );
+  // Create adapter
+  const adapter = useMemo(() => new SkeletonAdapter(), []);
 
   const handleEvent = (event) => {
     console.log('[Avatar Event]', event);
@@ -92,10 +52,7 @@ const App = () => {
       >
         <AvatarCanvas
           ref={avatarRef}
-          config={{
-            ...config,
-            modelUrl: modelConfig.url,
-          }}
+          config={config}
           adapter={adapter}
           onEvent={handleEvent}
           onReady={handleReady}
@@ -115,77 +72,10 @@ const App = () => {
           flexDirection: 'column',
         }}
       >
-        {/* Model Selection */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontWeight: 'bold', minWidth: '100px' }}>Avatar Model:</label>
-          {!useCustomUrl ? (
-            <>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-              >
-                {Object.entries(AVATAR_MODELS).map(([key, model]) => (
-                  <option key={key} value={key}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => setUseCustomUrl(true)}
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: '#f0f0f0',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                }}
-              >
-                Load Custom URL
-              </button>
-            </>
-          ) : (
-            <>
-              <input
-                type="text"
-                placeholder="Paste GLB/GLTF URL here..."
-                value={customUrl}
-                onChange={(e) => setCustomUrl(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  flex: 1,
-                  minWidth: '300px',
-                  fontSize: '12px',
-                }}
-              />
-              <button
-                onClick={() => setUseCustomUrl(false)}
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: '#f0f0f0',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                }}
-              >
-                Back to Presets
-              </button>
-            </>
-          )}
-        </div>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>Procedural Skeleton Animation</h2>
 
         {/* Animation Controls */}
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <label style={{ fontWeight: 'bold' }}>Animation Intensity:</label>
           <button
             onClick={() => handleIntensityChange('subtle')}
@@ -262,7 +152,7 @@ const App = () => {
         </div>
 
         <div style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-          💡 Current: {modelConfig.name}
+          💡 Using fixed humanoid skeleton with procedural animation
         </div>
       </div>
     </div>

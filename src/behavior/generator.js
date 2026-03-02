@@ -3,8 +3,7 @@
  *
  * Generates realistic idle animations using layered noise and weighted state transitions.
  * Combines micro-movements (continuous noise-driven transforms) with macro-actions
- * (event-driven state changes) to avoid mechanical repetition while maintaining
- * computational efficiency.
+ * (event-driven state changes) to create natural, non-repetitive idle behavior.
  */
 
 import { createNoise2D } from 'simplex-noise';
@@ -19,31 +18,25 @@ export class BehaviorGenerator {
     this.elapsed = 0;
     this.macroState = 'idle';
     this.macroStateStartTime = 0;
-    this.macroStateChangedAt = -Infinity;
 
     // Initialize PRNG with seed for deterministic behavior
     this.rng = new SimpleSeededRandom(seed);
-    // Create a seeded random function for deterministic noise generation
     const seededRng = new SimpleSeededRandom(seed);
     const random = () => seededRng.nextFloat();
     this.noise = createNoise2D(random);
 
     // Micro-primitives: noise-driven parameters
-    // These control both head position and limb rotations
-    // Frequencies are slightly different L/R to create natural variation
-    // Phases are set to create opposing limb movements (e.g., left arm forward when right arm back)
     this.microPrimitives = [
       // Head and upper body
       { name: 'headSwayX', frequency: 0.3, amplitude: 0.15, phase: 0 },
       { name: 'headSwayZ', frequency: 0.25, amplitude: 0.12, phase: 0.5 },
       { name: 'headTiltZ', frequency: 0.28, amplitude: 0.08, phase: 0.2 },
-      { name: 'eyeBlinkIntensity', frequency: 1.2, amplitude: 1.0, phase: 1.0 },
       { name: 'breathingAmplitude', frequency: 0.4, amplitude: 0.1, phase: 0.3 },
       { name: 'shoulderSway', frequency: 0.35, amplitude: 0.08, phase: 0.7 },
 
-      // Upper arms - opposing movement (180° phase difference)
+      // Upper arms - opposing movement
       { name: 'leftArmRotationZ', frequency: 0.32, amplitude: 0.18, phase: 0.0 },
-      { name: 'rightArmRotationZ', frequency: 0.34, amplitude: 0.16, phase: Math.PI }, // Opposite phase
+      { name: 'rightArmRotationZ', frequency: 0.34, amplitude: 0.16, phase: Math.PI },
 
       // Forearms - follow arms with slight delay
       { name: 'leftForearmRotationZ', frequency: 0.28, amplitude: 0.12, phase: 0.3 },
@@ -92,10 +85,6 @@ export class BehaviorGenerator {
         nextStates: [{ state: 'idle', weight: 1.0 }],
       },
     };
-
-    // Performance sampling
-    this.telemetryBuffer = [];
-    this.performanceSamples = [];
   }
 
   /**
@@ -254,13 +243,12 @@ export class BehaviorGenerator {
   }
 
   /**
-   * Get telemetry events
+   * Get current state telemetry
    */
   getTelemetry() {
     return {
       macroState: this.macroState,
       elapsedTime: this.elapsed,
-      samples: this.performanceSamples.slice(-10),
     };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { GLTFAdapter, MockAdapter, AdapterInterface } from '../../src/adapters/gltfAdapter';
+import { SkeletonAdapter, AdapterInterface } from '../../src/adapters/gltfAdapter';
 import * as THREE from 'three';
 
 describe('Adapters', () => {
@@ -8,57 +8,88 @@ describe('Adapters', () => {
       const adapter = new AdapterInterface();
 
       // loadModel is async, so it should reject
-      await expect(adapter.loadModel('url')).rejects.toThrow();
+      await expect(adapter.loadModel()).rejects.toThrow();
 
       // applyPose throws synchronously
       expect(() => adapter.applyPose({}, {})).toThrow();
     });
   });
 
-  describe('MockAdapter', () => {
+  describe('SkeletonAdapter', () => {
     let adapter;
 
     beforeEach(() => {
-      adapter = new MockAdapter();
+      adapter = new SkeletonAdapter();
     });
 
-    it('should load a placeholder model asynchronously', async () => {
-      const model = await adapter.loadModel('test.glb');
+    it('should create a fixed skeleton', async () => {
+      const skeleton = await adapter.loadModel();
 
-      expect(model).toBeInstanceOf(THREE.Group);
-      expect(model.children.length).toBeGreaterThan(0);
+      expect(skeleton).toBeInstanceOf(THREE.Group);
+      expect(skeleton.name).toBe('SkeletonRoot');
+      expect(skeleton.userData.bones).toBeDefined();
     });
 
-    it('should return a mesh as the first child', async () => {
-      const model = await adapter.loadModel('test.glb');
-      const firstChild = model.children[0];
+    it('should have all required bones', async () => {
+      const skeleton = await adapter.loadModel();
+      const bones = skeleton.userData.bones;
 
-      expect(firstChild).toBeInstanceOf(THREE.Mesh);
+      // Check for key bones
+      expect(bones.hips).toBeDefined();
+      expect(bones.spine).toBeDefined();
+      expect(bones.chest).toBeDefined();
+      expect(bones.neck).toBeDefined();
+      expect(bones.head).toBeDefined();
+      expect(bones.leftUpperArm).toBeDefined();
+      expect(bones.rightUpperArm).toBeDefined();
+      expect(bones.leftUpperLeg).toBeDefined();
+      expect(bones.rightUpperLeg).toBeDefined();
     });
 
-    it('should apply pose to model', async () => {
-      const model = await adapter.loadModel('test.glb');
-      const initialRotationY = model.rotation.y;
+    it('should apply pose to skeleton bones', async () => {
+      const skeleton = await adapter.loadModel();
+      const bones = skeleton.userData.bones;
+      const initialHeadRotationY = bones.head.rotation.y;
 
-      adapter.applyPose(model, { headRotationY: 0.5 });
+      adapter.applyPose(skeleton, { headRotationY: 0.5 });
 
-      expect(model.rotation.y).not.toBe(initialRotationY);
-      expect(model.rotation.y).toBe(0.5 * 2); // Amplified by 2x
+      expect(bones.head.rotation.y).not.toBe(initialHeadRotationY);
     });
 
-    it('should apply sway to model position', async () => {
-      const model = await adapter.loadModel('test.glb');
+    it('should apply arm transforms', async () => {
+      const skeleton = await adapter.loadModel();
+      const bones = skeleton.userData.bones;
+      const initialLeftArmRotation = bones.leftUpperArm.rotation.z;
 
-      adapter.applyPose(model, { headSwayX: 0.3 });
+      adapter.applyPose(skeleton, { leftArmRotationZ: 0.3 });
 
-      expect(model.position.x).toBe(0.3 * 0.5); // Amplified by 0.5x
+      expect(bones.leftUpperArm.rotation.z).not.toBe(initialLeftArmRotation);
+    });
+
+    it('should apply leg transforms', async () => {
+      const skeleton = await adapter.loadModel();
+      const bones = skeleton.userData.bones;
+      const initialLeftLegRotation = bones.leftUpperLeg.rotation.z;
+
+      adapter.applyPose(skeleton, { leftLegRotationZ: 0.2 });
+
+      expect(bones.leftUpperLeg.rotation.z).not.toBe(initialLeftLegRotation);
+    });
+
+    it('should toggle skeleton visualization', async () => {
+      const skeleton = await adapter.loadModel();
+      const initialVisibility = skeleton.userData.visualizationVisible;
+
+      const newState = adapter.toggleBones(skeleton);
+
+      expect(newState).not.toBe(initialVisibility);
     });
 
     it('should dispose of resources', async () => {
-      const model = await adapter.loadModel('test.glb');
+      const skeleton = await adapter.loadModel();
 
       // Should not throw
-      expect(() => adapter.dispose(model)).not.toThrow();
+      expect(() => adapter.dispose(skeleton)).not.toThrow();
     });
 
     it('should handle null model gracefully', () => {
@@ -66,112 +97,62 @@ describe('Adapters', () => {
     });
 
     it('should handle empty pose gracefully', async () => {
-      const model = await adapter.loadModel('test.glb');
+      const skeleton = await adapter.loadModel();
 
-      expect(() => adapter.applyPose(model, {})).not.toThrow();
-    });
-  });
-
-  describe('GLTFAdapter', () => {
-    let adapter;
-
-    beforeEach(() => {
-      adapter = new GLTFAdapter();
+      expect(() => adapter.applyPose(skeleton, {})).not.toThrow();
     });
 
-    it('should create loader instance', () => {
-      expect(adapter.loader).toBeDefined();
-      expect(adapter.cache).toBeDefined();
-      expect(adapter.cache.size).toBe(0);
+    it('should have bind pose stored for each bone', async () => {
+      const skeleton = await adapter.loadModel();
+      const bones = skeleton.userData.bones;
+
+      // Check that bind poses are stored
+      expect(bones.head.userData.bindRotation).toBeDefined();
+      expect(bones.head.userData.bindPosition).toBeDefined();
+      expect(bones.head.userData.bindScale).toBeDefined();
     });
 
-    it('should have cache mechanism', () => {
-      expect(adapter.cache instanceof Map).toBe(true);
+    it('should attach body mesh to skeleton', async () => {
+      const skeleton = await adapter.loadModel();
+
+      const meshes = adapter.attachMesh(skeleton);
+
+      expect(Array.isArray(meshes)).toBe(true);
+      expect(meshes.length).toBeGreaterThan(0);
+      expect(skeleton.userData.bodyMeshes).toBeDefined();
     });
 
-    it('should have mixer tracking', () => {
-      expect(adapter.mixers instanceof Map).toBe(true);
+    it('should toggle mesh visibility', async () => {
+      const skeleton = await adapter.loadModel();
+      adapter.attachMesh(skeleton);
+
+      const initialState = adapter.meshVisible;
+      const newState = adapter.toggleMesh(skeleton);
+
+      expect(newState).not.toBe(initialState);
     });
 
-    it('should dispose mixer if it exists', () => {
-      const model = new THREE.Group();
-      const mockMixer = { stopAllAction: () => {} };
+    it('should set mesh visibility', async () => {
+      const skeleton = await adapter.loadModel();
+      adapter.attachMesh(skeleton);
 
-      adapter.mixers.set(model, mockMixer);
-      adapter.dispose(model);
+      adapter.setMeshVisible(skeleton, false);
+      expect(adapter.meshVisible).toBe(false);
 
-      expect(adapter.mixers.has(model)).toBe(false);
+      adapter.setMeshVisible(skeleton, true);
+      expect(adapter.meshVisible).toBe(true);
     });
 
-    it('should traverse and dispose geometries', () => {
-      const geom = new THREE.BoxGeometry(1, 1, 1);
-      const mat = new THREE.MeshStandardMaterial();
-      const mesh = new THREE.Mesh(geom, mat);
-      const group = new THREE.Group();
-      group.add(mesh);
+    it('should create meshes with custom color', async () => {
+      const skeleton = await adapter.loadModel();
+      const customColor = 0xff9999;
 
-      const geometryDisposeSpy = { called: false };
-      const materialDisposeSpy = { called: false };
+      const meshes = adapter.attachMesh(skeleton, { color: customColor });
 
-      geom.dispose = () => {
-        geometryDisposeSpy.called = true;
-      };
-      mat.dispose = () => {
-        materialDisposeSpy.called = true;
-      };
-
-      adapter.dispose(group);
-
-      expect(geometryDisposeSpy.called).toBe(true);
-      expect(materialDisposeSpy.called).toBe(true);
-    });
-  });
-
-  describe('Bone Finding', () => {
-    let adapter;
-
-    beforeEach(() => {
-      adapter = new GLTFAdapter();
-    });
-
-    it('should find bone by name in hierarchy', () => {
-      const root = new THREE.Group();
-      const parent = new THREE.Group();
-      parent.name = 'Parent';
-      const child = new THREE.Group();
-      child.name = 'Target';
-
-      root.add(parent);
-      parent.add(child);
-
-      // Test the bone finding without applying transforms
-      const found = adapter._findBone(root, 'Target');
-      expect(found).toBe(child);
-    });
-
-    it('should return null if bone not found', () => {
-      const root = new THREE.Group();
-      const found = adapter._findBone(root, 'NonExistent');
-      expect(found).toBeNull();
-    });
-
-    it('should find bone at root level', () => {
-      const root = new THREE.Group();
-      root.name = 'Root';
-
-      const found = adapter._findBone(root, 'Root');
-      expect(found).toBe(root);
-    });
-
-    it('should handle fuzzy bone name matching', () => {
-      const root = new THREE.Group();
-      const headBone = new THREE.Group();
-      headBone.name = 'Armature_Head';
-      root.add(headBone);
-
-      // Should find with partial name
-      const found = adapter._findBone(root, 'head');
-      expect(found).toBe(headBone);
+      expect(meshes.length).toBeGreaterThan(0);
+      // Check that at least one mesh has the custom color
+      const firstMesh = meshes[0];
+      expect(firstMesh.material.color.getHex()).toBe(customColor);
     });
   });
 });

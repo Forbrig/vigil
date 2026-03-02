@@ -46,7 +46,6 @@ describe('BehaviorGenerator', () => {
 
       expect(pose).toHaveProperty('headSwayX');
       expect(pose).toHaveProperty('headSwayZ');
-      expect(pose).toHaveProperty('eyeBlinkIntensity');
       expect(pose).toHaveProperty('breathingAmplitude');
       expect(pose).toHaveProperty('shoulderSway');
     });
@@ -208,7 +207,6 @@ describe('BehaviorGenerator', () => {
 
       expect(telemetry).toHaveProperty('macroState');
       expect(telemetry).toHaveProperty('elapsedTime');
-      expect(telemetry).toHaveProperty('samples');
     });
 
     it('should track macro state in telemetry', () => {
