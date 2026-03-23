@@ -7,25 +7,43 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { PerspectiveCamera } from '@react-three/drei';
+import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import BehaviorGenerator from '../behavior/generator';
+import { bakeAndExportClip } from '../behavior/baker';
 import { SkeletonAdapter } from '../adapters/gltfAdapter';
 import './AvatarCanvas.scss';
 
 /**
  * Internal 3D scene component
  */
-function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
+function AvatarScene({ config, adapter, onEvent, onReady, modelRef, generatorRef }) {
   const groupRef = useRef(null);
-  const generatorRef = useRef(null);
+  // generatorRef is passed from parent so external controls can access it
+  // (if not provided, create a local ref)
+  generatorRef = generatorRef || useRef(null);
   const localModelRef = useRef(null);
   const clockRef = useRef(new THREE.Clock());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const controlsRef = useRef(null);
+  // Keep refs to callbacks so changes in parent functions don't force re-init
+  const onEventRef = useRef(onEvent);
+  const onReadyRef = useRef(onReady);
 
-  // Initialize generator and load model
   useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  // Initialize generator and load model (only once per adapter/modelRef/onReady change).
+  // Do NOT depend on the whole `config` object here to avoid recreating the model
+  // when callers update a single config property like `intensity`.
+  useEffect(() => {
+    let mounted = true;
     const init = async () => {
       try {
         // Clear previous model from scene
@@ -36,17 +54,19 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
           }
         }
 
-        // Initialize behavior generator
+        // Initialize behavior generator with initial config values
         generatorRef.current = new BehaviorGenerator({
-          seed: config.seed,
-          intensity: config.intensity || 'normal',
-          lowResource: config.lowResource || false,
+          seed: config?.seed,
+          intensity: config?.intensity || 'normal',
+          lowResource: config?.lowResource || false,
         });
 
         // Create the fixed skeleton
         console.log('Creating fixed skeleton...');
         const skeleton = await adapter.loadModel();
         console.log('Skeleton created successfully');
+
+        if (!mounted) return;
 
         localModelRef.current = skeleton;
         // Update parent ref for external control
@@ -59,8 +79,8 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
         }
 
         setIsLoading(false);
-        onEvent?.({ type: 'behavior:start', timestamp: Date.now() });
-        onReady?.();
+        onEventRef.current?.({ type: 'behavior:start', timestamp: Date.now() });
+        onReadyRef.current?.();
       } catch (err) {
         console.error('Error initializing avatar:', err);
         setError(err.message);
@@ -71,6 +91,7 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
     init();
 
     return () => {
+      mounted = false;
       if (localModelRef.current && groupRef.current) {
         groupRef.current.remove(localModelRef.current);
       }
@@ -78,7 +99,43 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
         adapter.dispose(localModelRef.current);
       }
     };
-  }, [adapter, config, onEvent, onReady, modelRef]);
+    // intentionally omit `config` here so updates to intensity/seed don't recreate the model
+  }, [adapter, modelRef]);
+
+  // Apply runtime-only config updates (do not recreate model). This lets callers
+  // change `intensity`, `seed`, or `lowResource` without replacing the skeleton
+  // or reattaching meshes/bones.
+  useEffect(() => {
+    const gen = generatorRef.current;
+    if (!gen) return;
+
+    if (typeof config?.intensity !== 'undefined' && config.intensity !== gen.intensity) {
+      try {
+        gen.setIntensity?.(config.intensity);
+      } catch (e) {
+        console.warn('setIntensity failed:', e);
+      }
+    }
+
+    if (typeof config?.lowResource !== 'undefined' && config.lowResource !== gen.lowResource) {
+      try {
+        gen.setLowResource?.(config.lowResource);
+      } catch (e) {
+        console.warn('setLowResource failed:', e);
+      }
+    }
+
+    // Only change seed if explicitly provided (not null/undefined) and different
+    // from current seed. setSeed resets macroState intentionally, so avoid
+    // calling it on unrelated updates (like intensity).
+    if (typeof config?.seed !== 'undefined' && config?.seed !== null && config.seed !== gen.seed) {
+      try {
+        gen.setSeed?.(config.seed);
+      } catch (e) {
+        console.warn('setSeed failed:', e);
+      }
+    }
+  }, [config?.intensity, config?.lowResource, config?.seed]);
 
   // Handle visibility changes (accessibility)
   useEffect(() => {
@@ -123,22 +180,26 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
     const deltaTime = clockRef.current.getDelta();
     const pose = generatorRef.current.update(deltaTime * 1000);
 
-    // Log pose occasionally for debugging
-    if (Math.random() < 0.001) {
-      console.log('Current pose:', {
-        headRotationY: pose.headRotationY?.toFixed(4),
-        headRotationX: pose.headRotationX?.toFixed(4),
-        headSwayX: pose.headSwayX?.toFixed(4),
-      });
-    }
+    // small optional telemetry already emitted via onEventRef; avoid noisy logging
 
     // Apply pose to model
     adapter.applyPose(localModelRef.current, pose);
 
+    // Keep orbit controls target centered on the avatar model position
+    try {
+      if (controlsRef.current && localModelRef.current) {
+        const p = localModelRef.current.position;
+        controlsRef.current.target.set(p.x, p.y, p.z);
+        controlsRef.current.update();
+      }
+    } catch (e) {
+      // ignore if controls not available in test env
+    }
+
     // Emit telemetry event periodically
     if (Math.random() < 0.01) {
       const telemetry = generatorRef.current.getTelemetry();
-      onEvent?.({ type: 'performance:sample', timestamp: Date.now(), telemetry });
+      onEventRef.current?.({ type: 'performance:sample', timestamp: Date.now(), telemetry });
     }
   });
 
@@ -161,6 +222,9 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
           <meshBasicMaterial color={0x0000ff} wireframe />
         </mesh>
       )}
+      {/* OrbitControls kept here so they have access to the scene/camera and
+          can be targeted to the avatar model. */}
+      <OrbitControls ref={controlsRef} enablePan enableRotate enableZoom />
     </group>
   );
 }
@@ -172,25 +236,28 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef }) {
  * This component is embeddable into any React application.
  */
 export const AvatarCanvas = React.forwardRef(
-  (
-    { config = {}, adapter = new SkeletonAdapter(), onEvent = () => {}, onReady = () => {} },
-    ref
-  ) => {
+  ({ config = {}, adapter: adapterProp, onEvent = () => {}, onReady = () => {} }, ref) => {
     const canvasRef = useRef(null);
     const modelRef = useRef(null);
+    const generatorRef = useRef(null);
+    // Ensure a stable adapter instance so re-renders (e.g. config changes)
+    // don't create a new adapter and force reinitialization of the scene.
+    const adapterRef = useRef(adapterProp || new SkeletonAdapter());
+    const adapter = adapterRef.current;
     const [showBones, setShowBones] = useState(true);
     const [showMesh, setShowMesh] = useState(false);
+    const [randomMode, setRandomMode] = useState(true);
+    const [activeMacro, setActiveMacro] = useState('idle');
 
     const handleRef = useRef({
       setIntensity: async (level) => {
-        // Placeholder - will be connected to behavior generator
-        console.log('Setting intensity to:', level);
+        if (generatorRef.current) generatorRef.current.setIntensity?.(level);
       },
       setLowResource: async (flag) => {
-        console.log('Setting low resource mode to:', flag);
+        if (generatorRef.current) generatorRef.current.setLowResource?.(flag);
       },
       setSeed: async (seed) => {
-        console.log('Setting seed to:', seed);
+        if (generatorRef.current) generatorRef.current.setSeed?.(seed);
       },
       toggleBones: async () => {
         if (modelRef.current && adapter) {
@@ -246,9 +313,67 @@ export const AvatarCanvas = React.forwardRef(
         return false;
       },
       dispose: async () => {
-        console.log('Disposing avatar');
+        // disposing avatar
+      },
+      // Behavior control helpers
+      setMacroState: async (state, durationMs = null) => {
+        if (generatorRef.current) {
+          const ok = generatorRef.current.setMacroState?.(state, durationMs);
+          // When user forces a state, disable random mode and update UI
+          if (ok) {
+            setRandomMode(false);
+            setActiveMacro(state);
+          }
+          return ok;
+        }
+        return false;
+      },
+      clearForcedMacroState: async () => {
+        if (generatorRef.current) {
+          generatorRef.current.clearForcedMacroState?.();
+          setRandomMode(true);
+          // sync UI to actual macroState
+          const state =
+            generatorRef.current.macroState ||
+            generatorRef.current.getTelemetry?.()?.macroState ||
+            'idle';
+          setActiveMacro(state);
+          return true;
+        }
+        return false;
+      },
+      setSceneWeights: async (weights) => {
+        if (generatorRef.current) {
+          generatorRef.current.setSceneWeights?.(weights);
+          return true;
+        }
+        return false;
       },
     });
+
+    // Keep UI in sync with generator state. Polling is small and simple.
+    React.useEffect(() => {
+      let mounted = true;
+      const tick = () => {
+        try {
+          const gen = generatorRef.current;
+          if (gen) {
+            const state = gen.macroState || gen.getTelemetry?.()?.macroState || 'idle';
+            if (mounted) setActiveMacro(state);
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+
+      const id = setInterval(tick, 200);
+      // run once immediately
+      tick();
+      return () => {
+        mounted = false;
+        clearInterval(id);
+      };
+    }, [generatorRef]);
 
     React.useImperativeHandle(ref, () => handleRef.current);
 
@@ -273,6 +398,7 @@ export const AvatarCanvas = React.forwardRef(
             onEvent={onEvent}
             onReady={onReady}
             modelRef={modelRef}
+            generatorRef={generatorRef}
           />
         </Canvas>
 
@@ -291,7 +417,7 @@ export const AvatarCanvas = React.forwardRef(
             className={`bone-toggle-btn ${showMesh ? 'active' : ''}`}
             onClick={async () => {
               if (!showMesh) {
-                await handleRef.current.attachMesh({ color: 0xffdbac });
+                await handleRef.current.attachMesh();
               } else {
                 await handleRef.current.toggleMesh();
               }
@@ -299,6 +425,66 @@ export const AvatarCanvas = React.forwardRef(
             title="Toggle body mesh"
           >
             {showMesh ? '✓ Mesh' : 'Mesh'}
+          </button>
+        </div>
+
+        {/* Behavior Buttons */}
+        <div className="avatar-behavior-controls">
+          <button
+            className={activeMacro === 'idle' ? 'active' : ''}
+            onClick={async () => await handleRef.current.setMacroState('idle')}
+          >
+            Idle
+          </button>
+          {/* HandsDown removed - idle covers hands-down posture */}
+          <button
+            className={activeMacro === 'walk' ? 'active' : ''}
+            onClick={async () => await handleRef.current.setMacroState('walk')}
+          >
+            Walk
+          </button>
+          <button
+            className={activeMacro === 'run' ? 'active' : ''}
+            onClick={async () => await handleRef.current.setMacroState('run')}
+          >
+            Run
+          </button>
+          <button
+            className={activeMacro === 'lookingAround' ? 'active' : ''}
+            onClick={async () => await handleRef.current.setMacroState('lookingAround')}
+          >
+            Looking Around
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                if (generatorRef.current && modelRef.current) {
+                  await bakeAndExportClip(generatorRef.current, adapter, modelRef.current, {
+                    macroState: generatorRef.current.macroState,
+                    duration: 2,
+                    fps: 30,
+                    clipName: generatorRef.current.macroState,
+                  });
+                }
+              } catch (e) {
+                console.error('Bake failed:', e);
+              }
+            }}
+          >
+            Export Clip
+          </button>
+          <button
+            onClick={async () => {
+              if (randomMode) {
+                await handleRef.current.clearForcedMacroState();
+              } else {
+                await handleRef.current.clearForcedMacroState();
+              }
+            }}
+            className={randomMode ? 'active' : ''}
+            title="Toggle automatic random behavior"
+          >
+            {randomMode ? 'Random (on)' : 'Random (off)'}
           </button>
         </div>
       </div>

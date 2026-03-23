@@ -21,6 +21,30 @@
   z-index: 10;
 }
 
+// Controls for behavior buttons (positioned so they don't affect layout)
+.avatar-behavior-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+.avatar-behavior-controls button {
+  padding: 8px 12px;
+  background: rgba(30, 30, 30, 0.85);
+  color: #fff;
+  border: 1px solid rgba(100, 100, 100, 0.6);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.avatar-behavior-controls button.active {
+  background: rgba(50, 150, 50, 0.85);
+}
+
 .bone-toggle-btn {
   padding: 8px 12px;
   background-color: rgba(50, 50, 50, 0.8);

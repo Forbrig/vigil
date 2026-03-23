@@ -22,7 +22,7 @@ export async function loadGLTFMesh(url) {
         resolve(gltf.scene);
       },
       (progress) => {
-        console.log(`Loading: ${((progress.loaded / progress.total) * 100).toFixed(2)}%`);
+        // progress callback intentionally left without noisy logging in production
       },
       (error) => {
         console.error('Error loading GLTF:', error);
@@ -65,8 +65,7 @@ export async function attachGLTFMeshToSkeleton(skeleton, url, options = {}) {
     // Load the GLTF model
     const scene = await loadGLTFMesh(url);
 
-    console.log('Loaded GLTF scene:', scene);
-    console.log('Scene has', scene.children.length, 'children');
+    // Scene loaded
 
     // Create a new container
     const container = new THREE.Group();
@@ -75,11 +74,6 @@ export async function attachGLTFMeshToSkeleton(skeleton, url, options = {}) {
     // Process all meshes
     scene.traverse((child) => {
       if (child instanceof THREE.SkinnedMesh) {
-        console.log('Found SkinnedMesh:', child.name, child.type);
-        console.log('  Position:', child.position);
-        console.log('  Scale:', child.scale);
-        console.log('  Rotation:', child.rotation);
-
         // Clone the geometry - it's already in bind pose
         const geometry = child.geometry.clone();
 
@@ -87,8 +81,7 @@ export async function attachGLTFMeshToSkeleton(skeleton, url, options = {}) {
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
 
-        console.log('  Vertices:', geometry.attributes.position.count);
-        console.log('  Bounding box:', geometry.boundingBox);
+        // geometry information available if needed for debugging
 
         // Clone material and disable skinning
         let material;
@@ -127,33 +120,21 @@ export async function attachGLTFMeshToSkeleton(skeleton, url, options = {}) {
         mesh.scale.copy(child.scale);
 
         container.add(mesh);
-        console.log('✓ Added mesh:', mesh.name);
       } else if (child instanceof THREE.Mesh) {
-        console.log('Found regular Mesh:', child.name, child.type);
         const meshClone = child.clone();
         meshClone.visible = true;
         container.add(meshClone);
-        console.log('✓ Added regular mesh:', child.name);
       }
     });
-
-    console.log('Container has', container.children.length, 'meshes');
 
     // Apply transformations to container
     container.scale.set(scale, scale, scale);
     container.position.set(position.x, position.y, position.z);
     container.rotation.set(rotation.x, rotation.y, rotation.z);
     container.visible = true;
-
-    console.log('Container scale:', container.scale);
-    console.log('Container position:', container.position);
-    console.log('Container visible:', container.visible);
-
     // Attach to the hips bone
     const hips = skeleton.userData.bones?.hips || skeleton;
     hips.add(container);
-
-    console.log('Attached container to:', hips.name || 'skeleton');
 
     // Store reference for visibility toggling
     if (!skeleton.userData.gltfMeshes) {
@@ -164,7 +145,7 @@ export async function attachGLTFMeshToSkeleton(skeleton, url, options = {}) {
       container: container,
     });
 
-    console.log(`Attached GLTF mesh from ${url} to skeleton`);
+    // GLTF mesh attached
     return container;
   } catch (error) {
     console.error('Failed to attach GLTF mesh:', error);

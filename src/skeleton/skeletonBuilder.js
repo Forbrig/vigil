@@ -53,25 +53,31 @@ function createBoneHierarchy() {
   bones.chest.add(bones.neck);
   bones.neck.add(bones.head);
 
-  // Left arm - shoulders at same height as neck base
-  bones.leftShoulder = createBone('shoulder_l', new THREE.Vector3(-0.15, 0.15, 0));
-  bones.leftUpperArm = createBone('upper_arm_l', new THREE.Vector3(-0.14, 0, 0));
-  bones.leftForearm = createBone('forearm_l', new THREE.Vector3(-0.14, 0, 0));
-  bones.leftHand = createBone('hand_l', new THREE.Vector3(-0.1, 0, 0));
+  // Left arm - attach upper arm directly to chest (no separate shoulder bone)
+  // Rotate upper arms so they hang down beside the torso (pointing -Y)
+  bones.leftUpperArm = createBone(
+    'upper_arm_l',
+    new THREE.Vector3(-0.16, 0.12, 0),
+    new THREE.Euler(0, 0, Math.PI / 2)
+  );
+  // Position forearm and hand along the local X axis so they follow upper-arm rotation
+  bones.leftForearm = createBone('forearm_l', new THREE.Vector3(-0.18, 0, 0));
+  bones.leftHand = createBone('hand_l', new THREE.Vector3(-0.12, 0, 0));
 
-  bones.chest.add(bones.leftShoulder);
-  bones.leftShoulder.add(bones.leftUpperArm);
+  bones.chest.add(bones.leftUpperArm);
   bones.leftUpperArm.add(bones.leftForearm);
   bones.leftForearm.add(bones.leftHand);
 
-  // Right arm
-  bones.rightShoulder = createBone('shoulder_r', new THREE.Vector3(0.15, 0.15, 0));
-  bones.rightUpperArm = createBone('upper_arm_r', new THREE.Vector3(0.14, 0, 0));
-  bones.rightForearm = createBone('forearm_r', new THREE.Vector3(0.14, 0, 0));
-  bones.rightHand = createBone('hand_r', new THREE.Vector3(0.1, 0, 0));
+  // Right arm - attach upper arm directly to chest
+  bones.rightUpperArm = createBone(
+    'upper_arm_r',
+    new THREE.Vector3(0.16, 0.12, 0),
+    new THREE.Euler(0, 0, -Math.PI / 2)
+  );
+  bones.rightForearm = createBone('forearm_r', new THREE.Vector3(0.18, 0, 0));
+  bones.rightHand = createBone('hand_r', new THREE.Vector3(0.12, 0, 0));
 
-  bones.chest.add(bones.rightShoulder);
-  bones.rightShoulder.add(bones.rightUpperArm);
+  bones.chest.add(bones.rightUpperArm);
   bones.rightUpperArm.add(bones.rightForearm);
   bones.rightForearm.add(bones.rightHand);
 
@@ -100,10 +106,15 @@ function createBoneHierarchy() {
  * Create a single bone object
  * @private
  */
-function createBone(name, position) {
+function createBone(name, position, rotationEuler = null) {
   const bone = new THREE.Object3D();
   bone.name = name;
   bone.position.copy(position);
+
+  // Apply an initial rotation if provided (useful to set a relaxed pose)
+  if (rotationEuler) {
+    bone.rotation.copy(rotationEuler);
+  }
 
   // Store bind pose for animation
   bone.userData.bindRotation = bone.rotation.clone();
@@ -168,14 +179,12 @@ function createSkeletonVisualization(bones, root) {
   createBoneLine(bones.neck, bones.head);
 
   // Left arm
-  createBoneLine(bones.chest, bones.leftShoulder);
-  createBoneLine(bones.leftShoulder, bones.leftUpperArm);
+  createBoneLine(bones.chest, bones.leftUpperArm);
   createBoneLine(bones.leftUpperArm, bones.leftForearm);
   createBoneLine(bones.leftForearm, bones.leftHand);
 
   // Right arm
-  createBoneLine(bones.chest, bones.rightShoulder);
-  createBoneLine(bones.rightShoulder, bones.rightUpperArm);
+  createBoneLine(bones.chest, bones.rightUpperArm);
   createBoneLine(bones.rightUpperArm, bones.rightForearm);
   createBoneLine(bones.rightForearm, bones.rightHand);
 
@@ -314,6 +323,7 @@ function calculateBoneBoxDimensions(bone, options = {}) {
  */
 export function createSimpleHumanoidMesh(skeleton, options = {}) {
   const { color = 0xffdbac, showMesh = true, thickness = 0.08 } = options;
+  // const { color = 0x000000, showMesh = true, thickness = 0.08 } = options;
   const bones = skeleton.userData.bones;
   const meshes = [];
 
@@ -336,11 +346,9 @@ export function createSimpleHumanoidMesh(skeleton, options = {}) {
     'chest',
     'neck',
     'head',
-    'leftShoulder',
     'leftUpperArm',
     'leftForearm',
     'leftHand',
-    'rightShoulder',
     'rightUpperArm',
     'rightForearm',
     'rightHand',
@@ -365,6 +373,18 @@ export function createSimpleHumanoidMesh(skeleton, options = {}) {
     if (boneName === 'head') {
       size.set(0.18, 0.18, 0.18);
       offset.set(0, 0.06, 0);
+    }
+
+    // Make hands smaller so they read better visually (similar to feet)
+    if (boneName.includes('Hand')) {
+      // Narrow, short box for hands
+      size.set(0.08, 0.04, 0.08);
+      const isLeft = boneName.includes('left');
+      offset.set(isLeft ? -0.02 : 0.02, 0, 0);
+    } else if (boneName.includes('Foot')) {
+      // Slightly flattened foot box to provide toe/heel shape
+      size.set(0.08, 0.04, 0.16);
+      offset.set(0, -0.02, 0.02);
     }
 
     // // Special handling for end effectors and specific bones

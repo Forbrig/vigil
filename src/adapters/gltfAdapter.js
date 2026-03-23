@@ -210,23 +210,38 @@ export class SkeletonAdapter extends AdapterInterface {
         bones.head.position.z = getBind(bones.head).z + value * 0.05;
         break;
 
+      // Hips position shift (used for subtle weight shifts during idle)
+      case 'hipsShiftX':
+        if (bones.hips) bones.hips.position.x = (getBind(bones.hips).x || 0) + value * 0.1;
+        break;
+
       // Breathing (chest scale)
       case 'breathingAmplitude':
         bones.chest.scale.y = 1.0 + value * 0.05;
         break;
 
-      // Shoulder transforms
+      // Spine / chest tilt forward/back
+      case 'spineRotationX':
+        bones.chest.rotation.x = getBind(bones.chest).x + value;
+        break;
+
+      // Shoulder-like sway: operate on upper arms now that shoulders are removed
       case 'shoulderSway':
-        bones.leftShoulder.rotation.z = getBind(bones.leftShoulder).z + value * 0.3;
-        bones.rightShoulder.rotation.z = getBind(bones.rightShoulder).z - value * 0.3;
+        bones.leftUpperArm.rotation.z = getBind(bones.leftUpperArm).z + value * 0.3;
+        bones.rightUpperArm.rotation.z = getBind(bones.rightUpperArm).z - value * 0.3;
         break;
 
       // Left arm
       case 'leftArmRotationZ':
         bones.leftUpperArm.rotation.z = getBind(bones.leftUpperArm).z + value * 0.8;
         break;
-      case 'leftForearmRotationZ':
-        bones.leftForearm.rotation.z = getBind(bones.leftForearm).z + value * 0.6;
+      case 'leftArmRotationX':
+        bones.leftUpperArm.rotation.x = getBind(bones.leftUpperArm).x + value * 0.8;
+        break;
+      case 'leftForearmRotationX':
+        // Forearm bend: map to local Y rotation to produce a forward flex
+        // (avoids twisting around the bone axis). Use a positive multiplier.
+        bones.leftForearm.rotation.y = getBind(bones.leftForearm).y + value * 1.2;
         break;
       case 'leftHandRotationX':
         bones.leftHand.rotation.x = getBind(bones.leftHand).x + value * 0.4;
@@ -236,8 +251,13 @@ export class SkeletonAdapter extends AdapterInterface {
       case 'rightArmRotationZ':
         bones.rightUpperArm.rotation.z = getBind(bones.rightUpperArm).z + value * 0.8;
         break;
-      case 'rightForearmRotationZ':
-        bones.rightForearm.rotation.z = getBind(bones.rightForearm).z + value * 0.6;
+      case 'rightArmRotationX':
+        bones.rightUpperArm.rotation.x = getBind(bones.rightUpperArm).x + value * 0.8;
+        break;
+      case 'rightForearmRotationX':
+        // Forearm bend: invert sign so right forearm flexes in the same visual
+        // direction as the left forearm (relative to the avatar forward).
+        bones.rightForearm.rotation.y = getBind(bones.rightForearm).y - value * 1.2;
         break;
       case 'rightHandRotationX':
         bones.rightHand.rotation.x = getBind(bones.rightHand).x + value * 0.4;
@@ -247,6 +267,12 @@ export class SkeletonAdapter extends AdapterInterface {
       case 'leftLegRotationZ':
         bones.leftUpperLeg.rotation.z = getBind(bones.leftUpperLeg).z + value * 0.5;
         break;
+      case 'leftLegRotationX':
+        bones.leftUpperLeg.rotation.x = getBind(bones.leftUpperLeg).x + value * 0.5;
+        break;
+      case 'leftLowerLegRotationX':
+        bones.leftLowerLeg.rotation.x = getBind(bones.leftLowerLeg).x + value * 0.8;
+        break;
       case 'leftFootRotationX':
         bones.leftFoot.rotation.x = getBind(bones.leftFoot).x + value * 0.3;
         break;
@@ -254,6 +280,12 @@ export class SkeletonAdapter extends AdapterInterface {
       // Right leg
       case 'rightLegRotationZ':
         bones.rightUpperLeg.rotation.z = getBind(bones.rightUpperLeg).z + value * 0.5;
+        break;
+      case 'rightLegRotationX':
+        bones.rightUpperLeg.rotation.x = getBind(bones.rightUpperLeg).x + value * 0.5;
+        break;
+      case 'rightLowerLegRotationX':
+        bones.rightLowerLeg.rotation.x = getBind(bones.rightLowerLeg).x + value * 0.8;
         break;
       case 'rightFootRotationX':
         bones.rightFoot.rotation.x = getBind(bones.rightFoot).x + value * 0.3;
