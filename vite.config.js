@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // GitHub Pages serves this project from /vigil/, not the domain root.
+  base: '/vigil/',
   root: '.',
   server: {
     port: 5173,
