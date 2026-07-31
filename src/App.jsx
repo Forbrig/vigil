@@ -9,17 +9,23 @@ const App = () => {
     intensity: 'normal',
     seed: Math.floor(Math.random() * 10000),
     lowResource: false,
+    skin: 'vigil',
+    scenario: 'room',
   });
+  const [scenarioOptions, setScenarioOptions] = useState([]);
 
   // Create adapter
   const adapter = useMemo(() => new SkeletonAdapter(), []);
+  const skinOptions = useMemo(() => adapter.getAvailableSkins?.() || [], [adapter]);
 
   const handleEvent = (event) => {
     console.log('[Avatar Event]', event);
   };
 
-  const handleReady = () => {
+  const handleReady = async () => {
     console.log('Avatar is ready!');
+    const scenarios = (await avatarRef.current?.getAvailableScenarios?.()) || [];
+    setScenarioOptions(scenarios);
   };
 
   const handleIntensityChange = async (level) => {
@@ -30,6 +36,16 @@ const App = () => {
   const handleToggleLowResource = async () => {
     setConfig((prev) => ({ ...prev, lowResource: !prev.lowResource }));
     await avatarRef.current?.setLowResource?.(!config.lowResource);
+  };
+
+  const handleSkinChange = async (skin) => {
+    setConfig((prev) => ({ ...prev, skin }));
+    await avatarRef.current?.setSkin?.(skin);
+  };
+
+  const handleScenarioChange = async (scenario) => {
+    setConfig((prev) => ({ ...prev, scenario }));
+    await avatarRef.current?.setScenario?.(scenario);
   };
 
   return (
@@ -120,6 +136,51 @@ const App = () => {
 
         {/* Other Controls */}
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontWeight: 'bold' }}>Scene Preset:</label>
+          <select
+            value={config.scenario}
+            onChange={(e) => handleScenarioChange(e.target.value)}
+            style={{
+              padding: '8px 10px',
+              border: '1px solid #bbb',
+              borderRadius: '4px',
+              backgroundColor: '#fff',
+              color: '#333',
+              cursor: 'pointer',
+            }}
+          >
+            {(scenarioOptions.length
+              ? scenarioOptions
+              : [
+                  { id: 'room', label: 'Room' },
+                  { id: 'street', label: 'Street' },
+                  { id: 'prison', label: 'Prison' },
+                ]
+            ).map((scenario) => (
+              <option key={scenario.id} value={scenario.id}>
+                {scenario.label}
+              </option>
+            ))}
+          </select>
+          <label style={{ fontWeight: 'bold' }}>Model Skin:</label>
+          <select
+            value={config.skin}
+            onChange={(e) => handleSkinChange(e.target.value)}
+            style={{
+              padding: '8px 10px',
+              border: '1px solid #bbb',
+              borderRadius: '4px',
+              backgroundColor: '#fff',
+              color: '#333',
+              cursor: 'pointer',
+            }}
+          >
+            {skinOptions.map((skin) => (
+              <option key={skin.id} value={skin.id}>
+                {skin.label}
+              </option>
+            ))}
+          </select>
           <button
             onClick={handleToggleLowResource}
             style={{
@@ -152,7 +213,8 @@ const App = () => {
         </div>
 
         <div style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-          💡 Using fixed humanoid skeleton with procedural animation
+          Scene preset changes only environment visuals (background now, scene assets later);
+          animation is controlled by behavior buttons and intensity.
         </div>
       </div>
     </div>

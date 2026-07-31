@@ -9,6 +9,8 @@ import * as THREE from 'three';
 import createHumanoidSkeleton, {
   toggleSkeletonVisualization,
   createSimpleHumanoidMesh,
+  applySkinToHumanoidMeshes,
+  listHumanoidSkinPresets,
   toggleBodyMeshVisibility,
   removeBodyMeshes,
 } from '../skeleton/skeletonBuilder';
@@ -65,8 +67,9 @@ export class AdapterInterface {
 export class SkeletonAdapter extends AdapterInterface {
   constructor(config = {}) {
     super();
-    this.bonesVisible = true; // Start with bones visible
-    this.meshVisible = false; // Start with mesh hidden
+    this.skin = config.skin || 'vigil';
+    this.bonesVisible = false; // Start with bones hidden
+    this.meshVisible = true; // Start with mesh visible
   }
 
   /**
@@ -74,7 +77,35 @@ export class SkeletonAdapter extends AdapterInterface {
    */
   async loadModel() {
     const skeleton = createHumanoidSkeleton();
+    this.setBonesVisible(skeleton, this.bonesVisible);
     return skeleton;
+  }
+
+  /**
+   * Set skeleton visualization visibility
+   * @param {THREE.Group} model - The skeleton
+   * @param {boolean} visible - Whether to show bones
+   * @returns {boolean} The applied visibility state
+   */
+  setBonesVisible(model, visible) {
+    if (!model) return this.bonesVisible;
+    this.bonesVisible = !!visible;
+    toggleSkeletonVisualization(model, this.bonesVisible);
+    return this.bonesVisible;
+  }
+
+  /**
+   * Show skeleton visualization
+   */
+  showBones(model) {
+    return this.setBonesVisible(model, true);
+  }
+
+  /**
+   * Hide skeleton visualization
+   */
+  hideBones(model) {
+    return this.setBonesVisible(model, false);
   }
 
   /**
@@ -90,10 +121,48 @@ export class SkeletonAdapter extends AdapterInterface {
     removeBodyMeshes(model);
 
     // Create and attach new meshes
-    const meshes = createSimpleHumanoidMesh(model, options);
+    const meshOptions = { ...options };
+    if (typeof meshOptions.skin === 'undefined' && typeof meshOptions.color === 'undefined') {
+      meshOptions.skin = this.skin;
+    }
+    const meshes = createSimpleHumanoidMesh(model, meshOptions);
+    if (meshOptions.skin) {
+      this.skin = meshOptions.skin;
+    }
     this.meshVisible = true;
 
     return meshes;
+  }
+
+  /**
+   * Apply a skin preset or custom skin object to the humanoid mesh.
+   * If no mesh exists yet, a mesh is attached automatically.
+   */
+  setSkin(model, skin) {
+    if (!model) return false;
+    this.skin = skin || this.skin;
+
+    const applied = applySkinToHumanoidMeshes(model, this.skin);
+    if (!applied) {
+      this.attachMesh(model, { skin: this.skin });
+    }
+
+    this.meshVisible = true;
+    return true;
+  }
+
+  /**
+   * Returns available built-in skin presets.
+   */
+  getAvailableSkins() {
+    return listHumanoidSkinPresets();
+  }
+
+  /**
+   * Returns the current selected skin id/config.
+   */
+  getSkin() {
+    return this.skin;
   }
 
   /**
@@ -193,6 +262,28 @@ export class SkeletonAdapter extends AdapterInterface {
     const getBind = (bone) => bone.userData.bindRotation;
 
     switch (property) {
+      // Root model translation for patrol in/out behavior
+      case 'modelPositionX':
+        if (bones.hips?.parent) {
+          bones.hips.parent.position.x = value;
+        }
+        break;
+      case 'modelPositionY':
+        if (bones.hips?.parent) {
+          bones.hips.parent.position.y = value;
+        }
+        break;
+      case 'modelPositionZ':
+        if (bones.hips?.parent) {
+          bones.hips.parent.position.z = value;
+        }
+        break;
+      case 'modelRotationY':
+        if (bones.hips?.parent) {
+          bones.hips.parent.rotation.y = value;
+        }
+        break;
+
       // Head transforms
       case 'headRotationY':
         bones.head.rotation.y = getBind(bones.head).y + value;
@@ -223,6 +314,9 @@ export class SkeletonAdapter extends AdapterInterface {
       // Spine / chest tilt forward/back
       case 'spineRotationX':
         bones.chest.rotation.x = getBind(bones.chest).x + value;
+        break;
+      case 'spineRotationY':
+        bones.chest.rotation.y = getBind(bones.chest).y + value;
         break;
 
       // Shoulder-like sway: operate on upper arms now that shoulders are removed
@@ -299,9 +393,7 @@ export class SkeletonAdapter extends AdapterInterface {
    * @returns {boolean} The new visibility state
    */
   toggleBones(model) {
-    this.bonesVisible = !this.bonesVisible;
-    toggleSkeletonVisualization(model, this.bonesVisible);
-    return this.bonesVisible;
+    return this.setBonesVisible(model, !this.bonesVisible);
   }
 
   /**

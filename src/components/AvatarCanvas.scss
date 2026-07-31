@@ -17,8 +17,25 @@
   bottom: 16px;
   right: 16px;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   z-index: 10;
+}
+
+.avatar-skin-select {
+  padding: 8px 10px;
+  background: rgba(30, 30, 30, 0.85);
+  color: #fff;
+  border: 2px solid rgba(100, 100, 100, 0.6);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.avatar-skin-select:focus {
+  outline: none;
+  border-color: rgba(140, 190, 255, 0.95);
 }
 
 // Controls for behavior buttons (positioned so they don't affect layout)
@@ -87,6 +104,11 @@
     padding: 6px 10px;
     font-size: 11px;
   }
+
+  .avatar-skin-select {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -101,6 +123,11 @@
 
   .bone-toggle-btn {
     padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .avatar-skin-select {
+    padding: 5px 7px;
     font-size: 10px;
   }
 }

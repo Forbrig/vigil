@@ -1,4 +1,4 @@
-++# Avatar Embedding Contract
+# Avatar Embedding Contract
 
 API: `AvatarWidget(config: AvatarConfig): AvatarHandle`
 
@@ -8,14 +8,20 @@ AvatarConfig
 - `intensity` ("subtle" | "normal" | "animated") default: `normal`
 - `seed` (number | undefined) — deterministic seed for test runs
 - `lowResource` (boolean) — start in low-resource mode
+- `skin` (string) — skin preset id (e.g. `vigil`, `graphite`, `ivory`, `hazard`)
+- `scenario` (string) — visual environment preset id (background today, scene assets later)
 - `onEvent` ((event: AvatarEvent) => void) — optional event callback
 
 AvatarHandle
 
-- `setIntensity(level)` → Promise<void>
-- `setLowResource(flag)` → Promise<void>
-- `setSeed(n)` → Promise<void>
-- `dispose()` → Promise<void> (cleanup resources)
+- `setIntensity(level)` → `Promise&lt;void&gt;`
+- `setLowResource(flag)` → `Promise&lt;void&gt;`
+- `setSeed(n)` → `Promise&lt;void&gt;`
+- `setSkin(idOrConfig)` → `Promise&lt;boolean&gt;`
+- `getAvailableSkins()` → `Promise&lt;Array&lt;{ id: string, label: string }&gt;&gt;`
+- `setScenario(id)` → `Promise&lt;boolean&gt;`
+- `getAvailableScenarios()` → `Promise&lt;Array&lt;{ id: string, label: string }&gt;&gt;`
+- `dispose()` → `Promise&lt;void&gt;` (cleanup resources)
 
 Events
 
@@ -24,9 +30,17 @@ Events
 Example usage
 
 ```js
-const handle = AvatarWidget({ intensity: 'subtle', seed: 42, onEvent: (e) => console.log(e) });
+const handle = AvatarWidget({
+  intensity: 'subtle',
+  seed: 42,
+  skin: 'graphite',
+  scenario: 'room',
+  onEvent: (e) => console.log(e),
+});
 // later
 handle.setIntensity('animated');
+handle.setSkin('hazard');
+handle.setScenario('street');
 ```
 
 Versioning

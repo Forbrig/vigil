@@ -6,13 +6,39 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import BehaviorGenerator from '../behavior/generator';
 import { bakeAndExportClip } from '../behavior/baker';
 import { SkeletonAdapter } from '../adapters/gltfAdapter';
 import './AvatarCanvas.scss';
+
+const SCENE_SCENARIOS = {
+  room: {
+    id: 'room',
+    label: 'Room',
+    background: '#f0f0f0',
+  },
+  street: {
+    id: 'street',
+    label: 'Street',
+    background: '#e8edf3',
+  },
+  prison: {
+    id: 'prison',
+    label: 'Prison',
+    background: '#ece6dd',
+  },
+};
+
+function listSceneScenarios() {
+  return Object.values(SCENE_SCENARIOS).map(({ id, label }) => ({ id, label }));
+}
+
+function resolveSceneScenario(id) {
+  return SCENE_SCENARIOS[id] || SCENE_SCENARIOS.room;
+}
 
 /**
  * Internal 3D scene component
@@ -26,7 +52,6 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef, generatorRef
   const clockRef = useRef(new THREE.Clock());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const controlsRef = useRef(null);
   // Keep refs to callbacks so changes in parent functions don't force re-init
   const onEventRef = useRef(onEvent);
   const onReadyRef = useRef(onReady);
@@ -76,6 +101,18 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef, generatorRef
 
         if (groupRef.current && skeleton) {
           groupRef.current.add(skeleton);
+        }
+
+        // Apply adapter startup visibility defaults on the loaded skeleton.
+        if (adapter?.setBonesVisible) {
+          adapter.setBonesVisible(skeleton, !!adapter.bonesVisible);
+        }
+        if (adapter?.meshVisible && adapter?.attachMesh) {
+          adapter.attachMesh(skeleton, {
+            skin: typeof adapter.getSkin === 'function' ? adapter.getSkin() : undefined,
+          });
+        } else if (adapter?.setMeshVisible) {
+          adapter.setMeshVisible(skeleton, !!adapter?.meshVisible);
         }
 
         setIsLoading(false);
@@ -185,17 +222,6 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef, generatorRef
     // Apply pose to model
     adapter.applyPose(localModelRef.current, pose);
 
-    // Keep orbit controls target centered on the avatar model position
-    try {
-      if (controlsRef.current && localModelRef.current) {
-        const p = localModelRef.current.position;
-        controlsRef.current.target.set(p.x, p.y, p.z);
-        controlsRef.current.update();
-      }
-    } catch (e) {
-      // ignore if controls not available in test env
-    }
-
     // Emit telemetry event periodically
     if (Math.random() < 0.01) {
       const telemetry = generatorRef.current.getTelemetry();
@@ -222,9 +248,8 @@ function AvatarScene({ config, adapter, onEvent, onReady, modelRef, generatorRef
           <meshBasicMaterial color={0x0000ff} wireframe />
         </mesh>
       )}
-      {/* OrbitControls kept here so they have access to the scene/camera and
-          can be targeted to the avatar model. */}
-      <OrbitControls ref={controlsRef} enablePan enableRotate enableZoom />
+      {/* Keep camera fixed relative to the viewport; model motion provides scene dynamics. */}
+      <OrbitControls enablePan={false} enableRotate={false} enableZoom={false} enabled={false} />
     </group>
   );
 }
@@ -244,10 +269,31 @@ export const AvatarCanvas = React.forwardRef(
     // don't create a new adapter and force reinitialization of the scene.
     const adapterRef = useRef(adapterProp || new SkeletonAdapter());
     const adapter = adapterRef.current;
-    const [showBones, setShowBones] = useState(true);
-    const [showMesh, setShowMesh] = useState(false);
+    const [showBones, setShowBones] = useState(() => !!adapter.bonesVisible);
+    const [showMesh, setShowMesh] = useState(() => !!adapter.meshVisible);
+    const [scenarioOptions] = useState(() => listSceneScenarios());
+    const [selectedScenario, setSelectedScenario] = useState(config?.scenario || 'room');
+    const activeSceneScenario = resolveSceneScenario(selectedScenario);
+    const [skinOptions] = useState(() =>
+      typeof adapter.getAvailableSkins === 'function' ? adapter.getAvailableSkins() : []
+    );
+    const [selectedSkin, setSelectedSkin] = useState(
+      (config?.skin && String(config.skin)) ||
+        (typeof adapter.getSkin === 'function' ? String(adapter.getSkin()) : 'vigil')
+    );
+    const selectedSkinRef = useRef(selectedSkin);
     const [randomMode, setRandomMode] = useState(true);
     const [activeMacro, setActiveMacro] = useState('idle');
+
+    useEffect(() => {
+      selectedSkinRef.current = selectedSkin;
+    }, [selectedSkin]);
+
+    useEffect(() => {
+      if (typeof config?.scenario !== 'undefined') {
+        setSelectedScenario(config.scenario);
+      }
+    }, [config?.scenario]);
 
     const handleRef = useRef({
       setIntensity: async (level) => {
@@ -258,6 +304,17 @@ export const AvatarCanvas = React.forwardRef(
       },
       setSeed: async (seed) => {
         if (generatorRef.current) generatorRef.current.setSeed?.(seed);
+      },
+      setScenario: async (scenario) => {
+        setSelectedScenario(scenario);
+        return true;
+      },
+      setScenarioOverrides: async () => {
+        // Scene scenarios do not support animation overrides.
+        return false;
+      },
+      getAvailableScenarios: async () => {
+        return listSceneScenarios();
       },
       toggleBones: async () => {
         if (modelRef.current && adapter) {
@@ -279,7 +336,10 @@ export const AvatarCanvas = React.forwardRef(
       },
       attachMesh: async (options = {}) => {
         if (modelRef.current && adapter && adapter.attachMesh) {
-          adapter.attachMesh(modelRef.current, options);
+          adapter.attachMesh(modelRef.current, {
+            skin: selectedSkinRef.current,
+            ...options,
+          });
           setShowMesh(true);
           return true;
         }
@@ -312,6 +372,23 @@ export const AvatarCanvas = React.forwardRef(
         }
         return false;
       },
+      setSkin: async (skin) => {
+        if (modelRef.current && adapter && adapter.setSkin) {
+          const ok = adapter.setSkin(modelRef.current, skin);
+          if (ok) {
+            setSelectedSkin(String(skin));
+            setShowMesh(true);
+          }
+          return ok;
+        }
+        return false;
+      },
+      getAvailableSkins: async () => {
+        if (adapter && adapter.getAvailableSkins) {
+          return adapter.getAvailableSkins();
+        }
+        return [];
+      },
       dispose: async () => {
         // disposing avatar
       },
@@ -338,13 +415,6 @@ export const AvatarCanvas = React.forwardRef(
             generatorRef.current.getTelemetry?.()?.macroState ||
             'idle';
           setActiveMacro(state);
-          return true;
-        }
-        return false;
-      },
-      setSceneWeights: async (weights) => {
-        if (generatorRef.current) {
-          generatorRef.current.setSceneWeights?.(weights);
           return true;
         }
         return false;
@@ -384,13 +454,13 @@ export const AvatarCanvas = React.forwardRef(
           gl={{ antialias: true, alpha: true, sortObjects: true }}
           className="avatar-canvas"
         >
-          <color attach="background" args={['#f0f0f0']} />
+          <color attach="background" args={[activeSceneScenario.background]} />
 
           <PerspectiveCamera makeDefault position={[0, 1, 2.5]} fov={75} />
 
-          {/* Basic lighting setup */}
+          {/* Lighting is fixed; scenario currently controls only background. */}
           <ambientLight intensity={0.5} />
-          <directionalLight position={[5, 5, 5]} intensity={1} />
+          <directionalLight position={[5, 5, 5]} intensity={1} color={'#ffffff'} />
 
           <AvatarScene
             config={config}
@@ -404,6 +474,42 @@ export const AvatarCanvas = React.forwardRef(
 
         {/* Debug Controls */}
         <div className="avatar-debug-controls">
+          {scenarioOptions.length > 0 && (
+            <select
+              className="avatar-skin-select"
+              value={selectedScenario}
+              onChange={async (e) => {
+                const scenario = e.target.value;
+                setSelectedScenario(scenario);
+                await handleRef.current.setScenario(scenario);
+              }}
+              title="Choose scene scenario"
+            >
+              {scenarioOptions.map((scenario) => (
+                <option key={scenario.id} value={scenario.id}>
+                  {scenario.label}
+                </option>
+              ))}
+            </select>
+          )}
+          {skinOptions.length > 0 && (
+            <select
+              className="avatar-skin-select"
+              value={selectedSkin}
+              onChange={async (e) => {
+                const skin = e.target.value;
+                setSelectedSkin(skin);
+                await handleRef.current.setSkin(skin);
+              }}
+              title="Choose avatar skin"
+            >
+              {skinOptions.map((skin) => (
+                <option key={skin.id} value={skin.id}>
+                  {skin.label}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             className={`bone-toggle-btn ${showBones ? 'active' : ''}`}
             onClick={async () => {
@@ -436,24 +542,17 @@ export const AvatarCanvas = React.forwardRef(
           >
             Idle
           </button>
-          {/* HandsDown removed - idle covers hands-down posture */}
           <button
-            className={activeMacro === 'walk' ? 'active' : ''}
-            onClick={async () => await handleRef.current.setMacroState('walk')}
+            className={activeMacro === 'lookAtUser' ? 'active' : ''}
+            onClick={async () => await handleRef.current.setMacroState('lookAtUser')}
           >
-            Walk
+            Look At User
           </button>
           <button
-            className={activeMacro === 'run' ? 'active' : ''}
-            onClick={async () => await handleRef.current.setMacroState('run')}
+            className={activeMacro === 'patrol' ? 'active' : ''}
+            onClick={async () => await handleRef.current.setMacroState('patrol')}
           >
-            Run
-          </button>
-          <button
-            className={activeMacro === 'lookingAround' ? 'active' : ''}
-            onClick={async () => await handleRef.current.setMacroState('lookingAround')}
-          >
-            Looking Around
+            Patrol
           </button>
           <button
             onClick={async () => {
@@ -476,7 +575,7 @@ export const AvatarCanvas = React.forwardRef(
           <button
             onClick={async () => {
               if (randomMode) {
-                await handleRef.current.clearForcedMacroState();
+                await handleRef.current.setMacroState(activeMacro || 'idle');
               } else {
                 await handleRef.current.clearForcedMacroState();
               }

@@ -8,12 +8,131 @@
 
 import { createNoise2D } from 'simplex-noise';
 
+const DEFAULT_SCENARIO_ID = 'balanced';
+
+const SCENARIO_PRESETS = {
+  balanced: {
+    id: 'balanced',
+    label: 'Balanced Vigil',
+    transitionDuration: 0.25,
+    movement: {
+      patrolOffsetX: 1.35,
+      returnSettleRate: 4.2,
+      patrolTravelSpeed: 0.52,
+      returnTravelSpeed: 0.72,
+      patrolTurnDuration: 0.45,
+      patrolInitialTurnDuration: 0.38,
+      returnTurnDuration: 0.38,
+    },
+    blend: {
+      microWeights: {
+        default: 0.68,
+        lookAtUser: 0.55,
+        patrol: 0.33,
+        returnToCenter: 0.3,
+      },
+      patrolWalkBlend: 0.68,
+      returnWalkBlend: 0.64,
+    },
+    walkCycles: {
+      patrolBase: {
+        cadence: 3.0,
+        legSwingMul: 0.62,
+        armSwingMul: 0.47,
+        kneeMul: 0.62,
+        forearmMul: 0.62,
+        footMul: 0.25,
+        lean: 0.12,
+      },
+      patrolLayer: {
+        cadence: 3.45,
+        legSwingMul: 0.76,
+        armSwingMul: 0.54,
+        kneeMul: 0.72,
+        forearmMul: 0.7,
+        footMul: 0.29,
+        lean: 0.14,
+      },
+    },
+  },
+  sentinel: {
+    id: 'sentinel',
+    label: 'Sentinel Focus',
+    movement: {
+      patrolOffsetX: 1.2,
+      returnSettleRate: 4.5,
+      patrolTravelSpeed: 0.45,
+      returnTravelSpeed: 0.75,
+      patrolTurnDuration: 0.5,
+      patrolInitialTurnDuration: 0.4,
+      returnTurnDuration: 0.42,
+    },
+    blend: {
+      patrolWalkBlend: 0.55,
+      returnWalkBlend: 0.52,
+      microWeights: {
+        lookAtUser: 0.48,
+      },
+    },
+  },
+  restless: {
+    id: 'restless',
+    label: 'Restless Patrol',
+    movement: {
+      patrolOffsetX: 2.2,
+      returnSettleRate: 3.6,
+      patrolTravelSpeed: 0.68,
+      returnTravelSpeed: 0.78,
+      patrolTurnDuration: 0.38,
+      patrolInitialTurnDuration: 0.32,
+      returnTurnDuration: 0.3,
+    },
+    blend: {
+      patrolWalkBlend: 0.78,
+      returnWalkBlend: 0.72,
+      microWeights: {
+        patrol: 0.26,
+        returnToCenter: 0.24,
+      },
+    },
+    walkCycles: {
+      patrolLayer: {
+        cadence: 3.75,
+        legSwingMul: 0.84,
+        armSwingMul: 0.58,
+        kneeMul: 0.78,
+      },
+    },
+  },
+};
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function deepMerge(target, source) {
+  const out = { ...target };
+  if (!isPlainObject(source)) return out;
+
+  for (const [key, value] of Object.entries(source)) {
+    if (isPlainObject(value) && isPlainObject(out[key])) {
+      out[key] = deepMerge(out[key], value);
+    } else {
+      out[key] = value;
+    }
+  }
+
+  return out;
+}
+
 export class BehaviorGenerator {
   constructor(config = {}) {
     const {
       seed = Math.random(),
       intensity = 'normal',
       lowResource = false,
+      scenario = DEFAULT_SCENARIO_ID,
+      scenarioOverrides = {},
       sceneWeights = {},
     } = config;
 
@@ -31,6 +150,12 @@ export class BehaviorGenerator {
     const seededRng = new SimpleSeededRandom(seed);
     const random = () => seededRng.nextFloat();
     this.noise = createNoise2D(random);
+    this._patrolDirection = this.rng.nextFloat() < 0.5 ? -1 : 1;
+    this._rootOffsetX = 0;
+    this._rootOffsetZ = 0;
+    this._rootRotationY = 0;
+    this._pendingMacroState = null;
+    this._returnToCenterPlan = null;
 
     // Micro-primitives: noise-driven parameters
     this.microPrimitives = [
@@ -82,72 +207,52 @@ export class BehaviorGenerator {
       idle: {
         duration: { min: 5000, max: 12000 },
         nextStates: [
-          { state: 'lookLeft', weight: 0.18 },
-          { state: 'lookRight', weight: 0.18 },
-          { state: 'lookDown', weight: 0.15 },
-          { state: 'walk', weight: 0.05 },
-          { state: 'run', weight: 0.03 },
-          { state: 'lookingAround', weight: 0.07 },
-          { state: 'idle', weight: 0.18 },
+          { state: 'lookAtUser', weight: 0.48 },
+          { state: 'idle', weight: 0.34 },
+          { state: 'patrol', weight: 0.18 },
         ],
       },
-      walk: {
-        // Short walk cycles that can occur occasionally
-        duration: { min: 1500, max: 4000 },
+      lookAtUser: {
+        duration: { min: 1800, max: 3500 },
         nextStates: [
-          { state: 'idle', weight: 0.65 },
-          { state: 'lookingAround', weight: 0.25 },
-          { state: 'run', weight: 0.05 },
+          { state: 'idle', weight: 0.62 },
+          { state: 'patrol', weight: 0.38 },
         ],
       },
-      run: {
-        // Faster, more energetic run cycles
-        duration: { min: 800, max: 2200 },
+      patrol: {
+        duration: { min: 10000, max: 20000 },
         nextStates: [
-          { state: 'idle', weight: 0.7 },
-          { state: 'walk', weight: 0.2 },
-          { state: 'lookingAround', weight: 0.1 },
+          { state: 'lookAtUser', weight: 0.65 },
+          { state: 'idle', weight: 0.35 },
         ],
       },
-      lookingAround: {
-        // Small sequence of glances and head turns
-        duration: { min: 2000, max: 4500 },
-        nextStates: [
-          { state: 'idle', weight: 0.6 },
-          { state: 'lookLeft', weight: 0.2 },
-          { state: 'lookRight', weight: 0.2 },
-        ],
-      },
-      lookLeft: {
-        duration: { min: 1500, max: 3000 },
-        nextStates: [
-          { state: 'idle', weight: 0.8 },
-          { state: 'lookRight', weight: 0.2 },
-        ],
-      },
-      lookRight: {
-        duration: { min: 1500, max: 3000 },
-        nextStates: [
-          { state: 'idle', weight: 0.8 },
-          { state: 'lookLeft', weight: 0.2 },
-        ],
-      },
-      lookDown: {
-        duration: { min: 1000, max: 2500 },
-        nextStates: [{ state: 'idle', weight: 1.0 }],
+      returnToCenter: {
+        duration: { min: 25000, max: 30000 },
+        nextStates: [{ state: 'idle', weight: 1 }],
       },
     };
 
-    // Optional overrides for next-state weights. Format:
-    // { stateName: { nextStateName: weight, ... }, ... }
-    this.sceneWeights = sceneWeights || {};
+    this._scenarioCatalog = Object.fromEntries(
+      Object.entries(SCENARIO_PRESETS).map(([id, preset]) => [
+        id,
+        deepMerge(SCENARIO_PRESETS[DEFAULT_SCENARIO_ID], deepMerge({ id }, preset)),
+      ])
+    );
+    this._scenario = deepMerge({}, this._scenarioCatalog[DEFAULT_SCENARIO_ID]);
+    this._scenarioOverrides = {};
+
+    const mergedScenarioOverrides = deepMerge(
+      deepMerge({}, scenarioOverrides || {}),
+      Object.keys(sceneWeights || {}).length ? { sceneWeights } : {}
+    );
+    this._applyScenarioConfig(scenario, mergedScenarioOverrides);
 
     // Pick a preferred idle weight side (left or right) so idle posture varies
     this._idleWeightSide = this.rng.nextFloat() < 0.5 ? 'left' : 'right';
 
     // Macro transition blending state
     this._macroTransition = null; // { from, to, startElapsed, duration }
-    this._macroTransitionDuration = 0.25; // seconds
+    this._macroTransitionDuration = this._scenario.transitionDuration ?? 0.25;
   }
 
   /**
@@ -203,11 +308,263 @@ export class BehaviorGenerator {
       macroPose = this._generateMacroMovement(this.macroState);
     }
 
-    // Blend micro and macro movements. Favor macro during walk to get clearer gait.
-    const microWeight = this.macroState === 'walk' ? 0.4 : 0.7;
+    // Blend micro and macro movements. Favor macro when a state needs clearer readability.
+    const microWeight = this._getMicroWeight(this.macroState);
     const pose = this._blendPoses(microPose, macroPose, microWeight);
 
+    const locomotionElapsedInState = this.elapsed * 1000 - this.macroStateStartTime;
+
+    if (this.macroState === 'patrol') {
+      const patrolLocomotion = this._computePatrolLocomotion(locomotionElapsedInState / 1000);
+      this._rootOffsetX = patrolLocomotion.positionX;
+      this._rootOffsetZ = 0;
+      this._rootRotationY = patrolLocomotion.rotationY;
+    } else if (this.macroState === 'returnToCenter') {
+      if (this._returnToCenterPlan) {
+        const returnLocomotion = this._computeReturnToCenterLocomotion(
+          locomotionElapsedInState / 1000
+        );
+        this._rootOffsetX = returnLocomotion.positionX;
+        this._rootOffsetZ = 0;
+        this._rootRotationY = returnLocomotion.rotationY;
+
+        if (returnLocomotion.done) {
+          const targetState = this._pendingMacroState || 'idle';
+          this._pendingMacroState = null;
+          this._returnToCenterPlan = null;
+          this._macroTransition = {
+            from: 'returnToCenter',
+            to: targetState,
+            startElapsed: this.elapsed,
+            duration: this._macroTransitionDuration,
+          };
+        }
+      } else {
+        this._rootOffsetX = 0;
+        this._rootOffsetZ = 0;
+        this._rootRotationY = 0;
+      }
+    } else {
+      // Outside patrol, settle root back to center/front.
+      const settleRate = this._scenario?.movement?.returnSettleRate ?? 4.2;
+      const alpha = Math.min(1, settleRate * deltaSeconds);
+      this._rootOffsetX = this._rootOffsetX + (0 - this._rootOffsetX) * alpha;
+      this._rootOffsetZ = this._rootOffsetZ + (0 - this._rootOffsetZ) * alpha;
+      this._rootRotationY = this._rootRotationY + (0 - this._rootRotationY) * alpha;
+    }
+
+    pose.modelPositionX = this._rootOffsetX;
+    pose.modelPositionZ = this._rootOffsetZ;
+    pose.modelRotationY = this._rootRotationY;
+
     return pose;
+  }
+
+  _getMicroWeight(state) {
+    const weights = this._scenario?.blend?.microWeights || {};
+    if (typeof weights[state] === 'number') return weights[state];
+    return typeof weights.default === 'number' ? weights.default : 0.68;
+  }
+
+  _computePatrolLocomotion(elapsedSeconds) {
+    const side = this._patrolDirection >= 0 ? 1 : -1;
+    const distance = Math.max(0.25, Math.abs(this._scenario?.movement?.patrolOffsetX ?? 1.35));
+    const speed = Math.max(0.05, this._scenario?.movement?.patrolTravelSpeed ?? 0.52);
+    const initialTurnDuration = Math.max(
+      0.05,
+      this._scenario?.movement?.patrolInitialTurnDuration ?? 0.38
+    );
+    const turnDuration = Math.max(0.05, this._scenario?.movement?.patrolTurnDuration ?? 0.45);
+
+    // Align model forward axis with travel direction on X so gait reads as forward walking.
+    const yawForDir = (dir) => (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+    const walkToEdgeDuration = distance / speed;
+    const walkAcrossDuration = (distance * 2) / speed;
+
+    // 1) Turn 90 degrees from center.
+    if (elapsedSeconds <= initialTurnDuration) {
+      const t = elapsedSeconds / initialTurnDuration;
+      return {
+        positionX: 0,
+        rotationY: yawForDir(side) * t,
+      };
+    }
+
+    // 2) Walk from center to first edge.
+    const afterInitialTurn = elapsedSeconds - initialTurnDuration;
+    if (afterInitialTurn <= walkToEdgeDuration) {
+      const t = afterInitialTurn / walkToEdgeDuration;
+      return {
+        positionX: side * distance * t,
+        rotationY: yawForDir(side),
+      };
+    }
+
+    // 3+) Loop: turn 180 at edge, walk across, turn 180, walk back.
+    const loopT = afterInitialTurn - walkToEdgeDuration;
+    const loopDuration = turnDuration + walkAcrossDuration + turnDuration + walkAcrossDuration;
+    const m = loopT % loopDuration;
+
+    if (m < turnDuration) {
+      const t = m / turnDuration;
+      return {
+        positionX: side * distance,
+        rotationY: yawForDir(side) + Math.PI * t,
+      };
+    }
+
+    const afterTurnA = m - turnDuration;
+    if (afterTurnA < walkAcrossDuration) {
+      const t = afterTurnA / walkAcrossDuration;
+      return {
+        positionX: side * distance + (-side * distance - side * distance) * t,
+        rotationY: yawForDir(-side),
+      };
+    }
+
+    const afterWalkA = afterTurnA - walkAcrossDuration;
+    if (afterWalkA < turnDuration) {
+      const t = afterWalkA / turnDuration;
+      return {
+        positionX: -side * distance,
+        rotationY: yawForDir(-side) + Math.PI * t,
+      };
+    }
+
+    const afterTurnB = afterWalkA - turnDuration;
+    const t = afterTurnB / walkAcrossDuration;
+    return {
+      positionX: -side * distance + (side * distance - -side * distance) * t,
+      rotationY: yawForDir(side),
+    };
+  }
+
+  _normalizeAngle(angle) {
+    let a = angle;
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+  }
+
+  _lerpAngle(from, to, alpha) {
+    const delta = this._normalizeAngle(to - from);
+    return this._normalizeAngle(from + delta * alpha);
+  }
+
+  _startReturnToCenter(targetState) {
+    const turnDuration = Math.max(0.05, this._scenario?.movement?.returnTurnDuration ?? 0.38);
+    const returnSpeed = Math.max(
+      0.05,
+      this._scenario?.movement?.returnTravelSpeed ??
+        this._scenario?.movement?.patrolTravelSpeed ??
+        0.52
+    );
+
+    const startX = this._rootOffsetX;
+    const startRotationY = this._rootRotationY;
+    const needsWalk = Math.abs(startX) > 0.03;
+    const walkDirection = startX >= 0 ? -1 : 1;
+    const walkYaw = walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2;
+    const walkDuration = needsWalk ? Math.abs(startX) / returnSpeed : 0;
+
+    this._pendingMacroState = targetState || 'idle';
+    this._returnToCenterPlan = {
+      startX,
+      startRotationY,
+      walkYaw,
+      turnToWalkDuration: needsWalk ? turnDuration : 0,
+      walkDuration,
+      turnToFrontDuration: turnDuration,
+    };
+
+    this._macroTransition = {
+      from: this.macroState,
+      to: 'returnToCenter',
+      startElapsed: this.elapsed,
+      duration: this._macroTransitionDuration,
+    };
+    this.macroStateChangedAt = this.elapsed * 1000;
+  }
+
+  _computeReturnToCenterLocomotion(elapsedSeconds) {
+    const plan = this._returnToCenterPlan;
+    if (!plan) {
+      return { positionX: 0, rotationY: 0, done: true };
+    }
+
+    const {
+      startX,
+      startRotationY,
+      walkYaw,
+      turnToWalkDuration,
+      walkDuration,
+      turnToFrontDuration,
+    } = plan;
+
+    let t = elapsedSeconds;
+
+    if (t < turnToWalkDuration) {
+      const alpha = turnToWalkDuration > 0 ? t / turnToWalkDuration : 1;
+      return {
+        positionX: startX,
+        rotationY: this._lerpAngle(startRotationY, walkYaw, alpha),
+        done: false,
+      };
+    }
+    t -= turnToWalkDuration;
+
+    if (t < walkDuration) {
+      const alpha = walkDuration > 0 ? t / walkDuration : 1;
+      return {
+        positionX: startX * (1 - alpha),
+        rotationY: walkYaw,
+        done: false,
+      };
+    }
+    t -= walkDuration;
+
+    if (t < turnToFrontDuration) {
+      const alpha = turnToFrontDuration > 0 ? t / turnToFrontDuration : 1;
+      return {
+        positionX: 0,
+        rotationY: this._lerpAngle(walkYaw, 0, alpha),
+        done: false,
+      };
+    }
+
+    return { positionX: 0, rotationY: 0, done: true };
+  }
+
+  _buildWalkCycle(options = {}) {
+    const {
+      cadence = 3,
+      legSwingMul = 0.6,
+      armSwingMul = 0.45,
+      kneeMul = 0.6,
+      forearmMul = 0.6,
+      footMul = 0.25,
+      lean = 0.12,
+      phaseShift = 0,
+    } = options;
+
+    const speedMul = this._intensityMultipliers[this.intensity] || 1.0;
+    const t = this.elapsed * cadence * speedMul + phaseShift;
+    const legSwing = Math.sin(t) * legSwingMul * speedMul;
+    const armSwing = Math.sin(t + Math.PI) * armSwingMul * speedMul;
+
+    const out = {};
+    out.leftLegRotationX = legSwing;
+    out.rightLegRotationX = -legSwing;
+    out.leftFootRotationX = Math.max(-0.35, Math.sin(t) * footMul);
+    out.rightFootRotationX = Math.max(-0.35, Math.sin(t + Math.PI) * footMul);
+    out.leftLowerLegRotationX = Math.max(0, -Math.sin(t)) * kneeMul;
+    out.rightLowerLegRotationX = Math.max(0, -Math.sin(t + Math.PI)) * kneeMul;
+    out.leftArmRotationX = armSwing;
+    out.rightArmRotationX = -armSwing;
+    out.leftForearmRotationX = Math.max(0, Math.sin(t - 0.5)) * forearmMul * speedMul;
+    out.rightForearmRotationX = Math.max(0, Math.sin(t + Math.PI - 0.5)) * forearmMul * speedMul;
+    out.spineRotationX = lean;
+    return out;
   }
 
   /**
@@ -251,96 +608,33 @@ export class BehaviorGenerator {
     const pose = {};
 
     switch (state) {
-      case 'lookLeft':
-        pose.headRotationY = -0.5;
-        pose.eyeLookX = -0.3;
+      case 'lookAtUser':
+        pose.headRotationY = 0;
+        pose.headRotationX = -0.03;
+        pose.eyeLookX = 0;
+        pose.eyeLookY = 0;
         break;
-      case 'lookRight':
-        pose.headRotationY = 0.5;
-        pose.eyeLookX = 0.3;
-        break;
-      case 'lookDown':
-        pose.headRotationX = 0.3;
-        pose.eyeLookY = -0.4;
-        break;
-
-      case 'walk': {
-        // Simple procedural walk that uses elapsed time for phase
-        const speedMul = this._intensityMultipliers[this.intensity] || 1.0;
-        const t = this.elapsed * 3 * speedMul; // walk speed scales with intensity
-        const legSwing = Math.sin(t) * 0.6 * speedMul; // swing magnitude scales
-        const armSwing = Math.sin(t + Math.PI) * 0.45 * speedMul;
-
-        // Swing around X axis for forward/back motion
-        pose.leftLegRotationX = legSwing;
-        pose.rightLegRotationX = -legSwing;
-
-        // Foot pitch to match step (lift when leg swings forward)
-        pose.leftFootRotationX = Math.max(-0.3, Math.sin(t) * 0.25);
-        pose.rightFootRotationX = Math.max(-0.3, Math.sin(t + Math.PI) * 0.25);
-
-        // Knee bend: bend the leg when foot is lifted (simple heuristic)
-        const leftKneeBend = Math.max(0, -Math.sin(t)) * 0.6;
-        const rightKneeBend = Math.max(0, -Math.sin(t + Math.PI)) * 0.6;
-        pose.leftLowerLegRotationX = leftKneeBend;
-        pose.rightLowerLegRotationX = rightKneeBend;
-
-        // Swing arms forward/back around X axis to match leg gait
-        pose.leftArmRotationX = armSwing;
-        pose.rightArmRotationX = -armSwing;
-
-        // Forearm bend: bend forearm when the corresponding arm swings forward.
-        // Use a phase-shifted sine and clamp to positive to emulate knee-like bend.
-        const leftForearmBend = Math.max(0, Math.sin(t - 0.5)) * 0.6 * speedMul;
-        const rightForearmBend = Math.max(0, Math.sin(t + Math.PI - 0.5)) * 0.6 * speedMul;
-        pose.leftForearmRotationX = leftForearmBend;
-        pose.rightForearmRotationX = rightForearmBend;
-
-        // Slight forward lean when walking (small radian value)
-        pose.spineRotationX = 0.12;
+      case 'patrol': {
+        const walkBase = this._buildWalkCycle(this._scenario?.walkCycles?.patrolBase || {});
+        const patrolLayer = this._buildWalkCycle(this._scenario?.walkCycles?.patrolLayer || {});
+        const patrolBlend = this._scenario?.blend?.patrolWalkBlend ?? 0.68;
+        Object.assign(pose, this._lerpPoses(walkBase, patrolLayer, patrolBlend));
+        // Keep upper body mostly neutral; root rotation drives patrol direction.
+        pose.headRotationY = 0;
+        pose.spineRotationY = 0;
+        pose.eyeLookX = 0;
         break;
       }
-      case 'run': {
-        // Energetic run: faster phase, larger swings and deeper knee bends
-        const speedMul = this._intensityMultipliers[this.intensity] || 1.0;
-        const t = this.elapsed * 5 * speedMul; // faster cadence
-        const legSwing = Math.sin(t) * 6 * speedMul; // larger forward swing
-        const armSwing = Math.sin(t + Math.PI) * 5 * speedMul;
-
-        pose.leftLegRotationX = legSwing;
-        pose.rightLegRotationX = -legSwing;
-
-        // Foot pitch to match stronger steps (lift forward more)
-        pose.leftFootRotationX = Math.max(-0.6, Math.sin(t) * 0.5);
-        pose.rightFootRotationX = Math.max(-0.6, Math.sin(t + Math.PI) * 0.5);
-
-        // (Removed direct foot lift - rely on larger leg swing and knee bend for visible lift)
-
-        // Knee bend - more pronounced during run (sync with foot lift)
-        const leftKneeBend = Math.max(0, -Math.sin(t)) * 1.0;
-        const rightKneeBend = Math.max(0, -Math.sin(t + Math.PI)) * 1.0;
-        pose.leftLowerLegRotationX = leftKneeBend;
-        pose.rightLowerLegRotationX = rightKneeBend;
-
-        // Arms swing more during run
-        pose.leftArmRotationX = armSwing;
-        pose.rightArmRotationX = -armSwing;
-
-        // Forearm bend linked to gait with slightly increased magnitude from walk
-        const leftForearmBend = Math.max(0, Math.sin(t - 0.4)) * 2 * speedMul;
-        const rightForearmBend = Math.max(0, Math.sin(t + Math.PI - 0.4)) * 2 * speedMul;
-        pose.leftForearmRotationX = leftForearmBend;
-        pose.rightForearmRotationX = rightForearmBend;
-
-        // Stronger forward lean while running
-        pose.spineRotationX = 0.6;
-        break;
-      }
-      case 'lookingAround': {
-        // Gentle oscillation of head Y to simulate scanning the environment
-        const t = this.elapsed * 0.8;
-        pose.headRotationY = Math.sin(t) * 0.6;
-        pose.eyeLookX = Math.sin(t) * 0.35;
+      case 'returnToCenter': {
+        const walkBase = this._buildWalkCycle(this._scenario?.walkCycles?.patrolBase || {});
+        const patrolLayer = this._buildWalkCycle(this._scenario?.walkCycles?.patrolLayer || {});
+        const returnBlend = this._scenario?.blend?.returnWalkBlend ?? 0.64;
+        Object.assign(pose, this._lerpPoses(walkBase, patrolLayer, returnBlend));
+        pose.headRotationY = 0;
+        pose.headRotationX = -0.01;
+        pose.spineRotationY = 0;
+        pose.eyeLookX = 0;
+        pose.eyeLookY = 0;
         break;
       }
       case 'idle':
@@ -418,6 +712,13 @@ export class BehaviorGenerator {
       randomValue -= stateOption.weight;
       if (randomValue <= 0) {
         const chosen = stateOption.state;
+        if (chosen === 'patrol') {
+          this._patrolDirection = this.rng.nextFloat() < 0.5 ? -1 : 1;
+        }
+        if (this.macroState === 'patrol' && chosen !== 'patrol') {
+          this._startReturnToCenter(chosen);
+          break;
+        }
         // Start a smooth transition from current macro state to chosen state
         this._macroTransition = {
           from: this.macroState,
@@ -439,6 +740,19 @@ export class BehaviorGenerator {
    */
   setMacroState(state, durationMs = null) {
     if (!this.macroStates[state]) return false;
+    if (state === 'patrol') {
+      this._patrolDirection = this.rng.nextFloat() < 0.5 ? -1 : 1;
+    }
+    if (this.macroState === 'patrol' && state !== 'patrol') {
+      this._startReturnToCenter(state);
+      this.forcedMacroState = state;
+      if (durationMs && typeof durationMs === 'number') {
+        this.forcedUntil = Date.now() + durationMs;
+      } else {
+        this.forcedUntil = null;
+      }
+      return true;
+    }
     // Start a smooth transition into the requested macro state instead of snapping
     this._macroTransition = {
       from: this.macroState,
@@ -466,12 +780,69 @@ export class BehaviorGenerator {
     this.forcedUntil = null;
   }
 
+  _resolveScenarioBase(scenario) {
+    if (typeof scenario === 'string' && this._scenarioCatalog[scenario]) {
+      return deepMerge({}, this._scenarioCatalog[scenario]);
+    }
+
+    if (isPlainObject(scenario)) {
+      const preferredId =
+        typeof scenario.id === 'string' && this._scenarioCatalog[scenario.id]
+          ? scenario.id
+          : DEFAULT_SCENARIO_ID;
+      const base = deepMerge({}, this._scenarioCatalog[preferredId]);
+      return deepMerge(base, scenario);
+    }
+
+    return deepMerge({}, this._scenarioCatalog[DEFAULT_SCENARIO_ID]);
+  }
+
+  _applyScenarioConfig(scenario, overrides = {}) {
+    const base = this._resolveScenarioBase(scenario);
+    const merged = deepMerge(base, overrides || {});
+
+    merged.id = typeof merged.id === 'string' ? merged.id : DEFAULT_SCENARIO_ID;
+    merged.label = merged.label || merged.id;
+
+    this._scenario = merged;
+    this._scenarioOverrides = deepMerge({}, overrides || {});
+    this.sceneWeights = merged.sceneWeights || {};
+    this._macroTransitionDuration = merged.transitionDuration ?? 0.25;
+  }
+
+  getAvailableScenarios() {
+    return Object.values(this._scenarioCatalog).map((scenario) => ({
+      id: scenario.id,
+      label: scenario.label,
+    }));
+  }
+
+  setScenario(scenario, overrides = {}) {
+    this._applyScenarioConfig(scenario, overrides);
+    return true;
+  }
+
+  setScenarioOverrides(overrides = {}) {
+    if (!isPlainObject(overrides)) return false;
+    const merged = deepMerge(this._scenarioOverrides || {}, overrides);
+    this._applyScenarioConfig(this._scenario?.id || DEFAULT_SCENARIO_ID, merged);
+    return true;
+  }
+
+  getScenario() {
+    return {
+      id: this._scenario?.id || DEFAULT_SCENARIO_ID,
+      label: this._scenario?.label || DEFAULT_SCENARIO_ID,
+      config: deepMerge({}, this._scenario || {}),
+    };
+  }
+
   /**
    * Set scene weights at runtime. `weights` should be an object in the same format
    * as the `sceneWeights` constructor option: { stateName: { nextStateName: weight } }
    */
   setSceneWeights(weights = {}) {
-    this.sceneWeights = weights;
+    this.setScenarioOverrides({ sceneWeights: weights });
   }
 
   /**
@@ -503,6 +874,12 @@ export class BehaviorGenerator {
     this.elapsed = 0;
     this.macroState = 'idle';
     this.macroStateStartTime = 0;
+    this._patrolDirection = this.rng.nextFloat() < 0.5 ? -1 : 1;
+    this._rootOffsetX = 0;
+    this._rootOffsetZ = 0;
+    this._rootRotationY = 0;
+    this._pendingMacroState = null;
+    this._returnToCenterPlan = null;
   }
 
   /**
@@ -512,6 +889,7 @@ export class BehaviorGenerator {
     return {
       macroState: this.macroState,
       elapsedTime: this.elapsed,
+      scenarioId: this._scenario?.id || DEFAULT_SCENARIO_ID,
     };
   }
 }

@@ -154,5 +154,22 @@ describe('Adapters', () => {
       const firstMesh = meshes[0];
       expect(firstMesh.material.color.getHex()).toBe(customColor);
     });
+
+    it('should expose available skin presets', () => {
+      const skins = adapter.getAvailableSkins();
+      expect(Array.isArray(skins)).toBe(true);
+      expect(skins.length).toBeGreaterThan(0);
+      expect(skins.some((s) => s.id === 'vigil')).toBe(true);
+    });
+
+    it('should apply a skin preset at runtime', async () => {
+      const skeleton = await adapter.loadModel();
+      adapter.attachMesh(skeleton, { skin: 'vigil' });
+
+      expect(adapter.setSkin(skeleton, 'hazard')).toBe(true);
+      expect(adapter.getSkin()).toBe('hazard');
+      expect(skeleton.userData.activeSkin).toBeDefined();
+      expect(skeleton.userData.activeSkin.id).toBe('hazard');
+    });
   });
 });

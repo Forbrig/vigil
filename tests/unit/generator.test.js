@@ -116,19 +116,61 @@ describe('BehaviorGenerator', () => {
       const endState = generator.macroState;
 
       // Should either stay in idle or transition to another valid state
-      const validStates = ['idle', 'lookLeft', 'lookRight', 'lookDown'];
+      const validStates = ['idle', 'lookAtUser', 'patrol', 'returnToCenter'];
       expect(validStates).toContain(endState);
     });
 
     it('should have different values for different macro states', () => {
-      generator.macroState = 'lookLeft';
-      const leftPose = generator._generateMacroMovement('lookLeft');
+      generator.elapsed = 1.25;
+      const idlePose = generator._generateMacroMovement('idle');
+      const patrolPose = generator._generateMacroMovement('patrol');
 
-      generator.macroState = 'lookRight';
-      const rightPose = generator._generateMacroMovement('lookRight');
+      expect(patrolPose.leftLegRotationX).not.toBe(idlePose.leftLegRotationX);
+      expect(patrolPose.rightArmRotationX).not.toBe(idlePose.rightArmRotationX);
+    });
 
-      expect(leftPose.headRotationY).not.toBe(rightPose.headRotationY);
-      expect(leftPose.eyeLookX).not.toBe(rightPose.eyeLookX);
+    it('should return to center before leaving patrol', () => {
+      generator.setScenarioOverrides({
+        movement: {
+          patrolOffsetX: 1.8,
+          patrolTravelSpeed: 0.6,
+          returnTravelSpeed: 0.6,
+          patrolInitialTurnDuration: 0.2,
+          patrolTurnDuration: 0.2,
+          returnTurnDuration: 0.2,
+        },
+      });
+
+      generator.setMacroState('patrol');
+      for (let i = 0; i < 200; i++) generator.update(16);
+
+      const poseDuringPatrol = generator.update(16);
+      expect(Math.abs(poseDuringPatrol.modelPositionX)).toBeGreaterThan(0.05);
+
+      const ok = generator.setMacroState('idle');
+      expect(ok).toBe(true);
+
+      let observedReturn = false;
+      let firstReturnPose = null;
+      for (let i = 0; i < 400; i++) {
+        const pose = generator.update(16);
+        if (generator.macroState === 'returnToCenter') {
+          observedReturn = true;
+          if (!firstReturnPose) firstReturnPose = pose;
+          // During return, avatar should still be moving toward center naturally.
+          if (Math.abs(pose.modelPositionX) > 0.02) {
+            expect(Math.abs(pose.modelRotationY)).toBeGreaterThan(0.05);
+          }
+        }
+      }
+
+      expect(observedReturn).toBe(true);
+      expect(firstReturnPose).not.toBeNull();
+      expect(Math.abs(firstReturnPose.modelPositionX)).toBeGreaterThan(0.05);
+      expect(generator.macroState).toBe('idle');
+      const finalPose = generator.update(16);
+      expect(Math.abs(finalPose.modelPositionX)).toBeLessThan(0.02);
+      expect(Math.abs(finalPose.modelRotationY)).toBeLessThan(0.02);
     });
   });
 
@@ -213,9 +255,9 @@ describe('BehaviorGenerator', () => {
       const telemetry1 = generator.getTelemetry();
       expect(telemetry1.macroState).toBe('idle');
 
-      generator.macroState = 'lookLeft';
+      generator.macroState = 'lookAtUser';
       const telemetry2 = generator.getTelemetry();
-      expect(telemetry2.macroState).toBe('lookLeft');
+      expect(telemetry2.macroState).toBe('lookAtUser');
     });
 
     it('should track elapsed time', () => {
@@ -226,6 +268,35 @@ describe('BehaviorGenerator', () => {
       const telemetry2 = generator.getTelemetry();
 
       expect(telemetry2.elapsedTime).toBeGreaterThan(telemetry1.elapsedTime);
+    });
+  });
+
+  describe('Scenario System', () => {
+    it('should expose available scenarios', () => {
+      const scenarios = generator.getAvailableScenarios();
+      expect(Array.isArray(scenarios)).toBe(true);
+      expect(scenarios.length).toBeGreaterThan(0);
+      expect(scenarios.some((s) => s.id === 'balanced')).toBe(true);
+    });
+
+    it('should switch scenario preset', () => {
+      const ok = generator.setScenario('restless');
+      expect(ok).toBe(true);
+      expect(generator.getScenario().id).toBe('restless');
+      expect(generator.getTelemetry().scenarioId).toBe('restless');
+    });
+
+    it('should apply scenario overrides', () => {
+      generator.setScenario('balanced');
+      const ok = generator.setScenarioOverrides({
+        movement: { patrolOffsetX: 2.4 },
+        blend: { patrolWalkBlend: 0.8 },
+      });
+
+      expect(ok).toBe(true);
+      const scenario = generator.getScenario();
+      expect(scenario.config.movement.patrolOffsetX).toBe(2.4);
+      expect(scenario.config.blend.patrolWalkBlend).toBe(0.8);
     });
   });
 

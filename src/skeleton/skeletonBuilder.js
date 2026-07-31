@@ -7,6 +7,180 @@
 
 import * as THREE from 'three';
 
+const HUMANOID_SKIN_PRESETS = {
+  vigil: {
+    label: 'Vigil Default',
+    palette: {
+      skin: 0xd6b79a,
+      fabric: 0x2d3440,
+      accent: 0x596273,
+      trim: 0x8a95a8,
+    },
+    material: {
+      roughness: 0.62,
+      metalness: 0.06,
+      flatShading: true,
+    },
+  },
+  graphite: {
+    label: 'Graphite Sentinel',
+    palette: {
+      skin: 0xa78d76,
+      fabric: 0x1f252d,
+      accent: 0x3b4653,
+      trim: 0x9aa6b4,
+    },
+    material: {
+      roughness: 0.7,
+      metalness: 0.08,
+      flatShading: true,
+    },
+  },
+  ivory: {
+    label: 'Ivory Monitor',
+    palette: {
+      skin: 0xe2c7ab,
+      fabric: 0xc9d1d8,
+      accent: 0x8f9aa8,
+      trim: 0x4f5967,
+    },
+    material: {
+      roughness: 0.5,
+      metalness: 0.02,
+      flatShading: true,
+    },
+  },
+  hazard: {
+    label: 'Hazard Watch',
+    palette: {
+      skin: 0xc9a382,
+      fabric: 0x2b2f39,
+      accent: 0xc46a24,
+      trim: 0xe6c369,
+    },
+    material: {
+      roughness: 0.6,
+      metalness: 0.14,
+      flatShading: true,
+    },
+  },
+};
+
+function getBoneSkinRole(boneName) {
+  const lower = String(boneName || '').toLowerCase();
+  if (lower === 'head' || lower.includes('neck') || boneName.includes('Hand')) {
+    return 'skin';
+  }
+  if (boneName.includes('UpperArm') || boneName.includes('Forearm') || boneName.includes('Foot')) {
+    return 'accent';
+  }
+  return 'fabric';
+}
+
+function resolveHumanoidSkin(skinOrPreset, fallbackColor = null) {
+  if (fallbackColor != null && skinOrPreset == null) {
+    return {
+      id: 'custom',
+      label: 'Custom',
+      palette: {
+        skin: fallbackColor,
+        fabric: fallbackColor,
+        accent: fallbackColor,
+        trim: fallbackColor,
+      },
+      material: {
+        roughness: 0.55,
+        metalness: 0.03,
+        flatShading: true,
+      },
+    };
+  }
+
+  if (skinOrPreset && typeof skinOrPreset === 'object') {
+    const base = HUMANOID_SKIN_PRESETS.vigil;
+    return {
+      id: skinOrPreset.id || 'custom',
+      label: skinOrPreset.label || 'Custom',
+      palette: {
+        ...base.palette,
+        ...(skinOrPreset.palette || {}),
+      },
+      material: {
+        ...base.material,
+        ...(skinOrPreset.material || {}),
+      },
+    };
+  }
+
+  const presetId =
+    typeof skinOrPreset === 'string' && HUMANOID_SKIN_PRESETS[skinOrPreset]
+      ? skinOrPreset
+      : 'vigil';
+  const preset = HUMANOID_SKIN_PRESETS[presetId];
+
+  return {
+    id: presetId,
+    label: preset.label,
+    palette: { ...preset.palette },
+    material: { ...preset.material },
+  };
+}
+
+function createSkinMaterial(role, skin) {
+  const color = skin.palette[role] ?? skin.palette.fabric;
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness: skin.material.roughness,
+    metalness: skin.material.metalness,
+    flatShading: skin.material.flatShading,
+  });
+  material.name = `skin-material-${skin.id}-${role}`;
+  return material;
+}
+
+export function listHumanoidSkinPresets() {
+  return Object.entries(HUMANOID_SKIN_PRESETS).map(([id, preset]) => ({
+    id,
+    label: preset.label,
+  }));
+}
+
+export function applySkinToHumanoidMeshes(skeleton, skinOrPreset) {
+  if (!skeleton) return false;
+  const meshes = skeleton.userData.bodyMeshes || [];
+  if (!meshes.length) return false;
+
+  const skin = resolveHumanoidSkin(skinOrPreset);
+
+  meshes.forEach((mesh) => {
+    if (!(mesh instanceof THREE.Mesh)) return;
+    const role = mesh.userData.skinRole || 'fabric';
+    const color = skin.palette[role] ?? skin.palette.fabric;
+
+    if (Array.isArray(mesh.material)) {
+      mesh.material.forEach((mat) => {
+        if (!mat || !('color' in mat)) return;
+        mat.color.setHex(color);
+        if ('roughness' in mat) mat.roughness = skin.material.roughness;
+        if ('metalness' in mat) mat.metalness = skin.material.metalness;
+        mat.flatShading = skin.material.flatShading;
+        mat.needsUpdate = true;
+      });
+      return;
+    }
+
+    if (!mesh.material || !('color' in mesh.material)) return;
+    mesh.material.color.setHex(color);
+    if ('roughness' in mesh.material) mesh.material.roughness = skin.material.roughness;
+    if ('metalness' in mesh.material) mesh.material.metalness = skin.material.metalness;
+    mesh.material.flatShading = skin.material.flatShading;
+    mesh.material.needsUpdate = true;
+  });
+
+  skeleton.userData.activeSkin = skin;
+  return true;
+}
+
 /**
  * Create a fixed humanoid skeleton with standard bone structure
  * @returns {THREE.Group} Root group containing the skeleton
@@ -38,20 +212,18 @@ function createBoneHierarchy() {
   // Define bone positions and create bone objects
   const bones = {};
 
-  // Hips (root)
-  bones.hips = createBone('hips', new THREE.Vector3(0, 0, 0));
-
-  // Spine - torso segments that stack vertically
-  bones.spine = createBone('spine', new THREE.Vector3(0, 0.1, 0)); // 0.1 tall
-  bones.chest = createBone('chest', new THREE.Vector3(0, 0.15, 0)); // 0.15 tall
-  bones.neck = createBone('neck', new THREE.Vector3(0, 0.15, 0)); // 0.15 tall - same height as shoulders!
-  bones.head = createBone('head', new THREE.Vector3(0, 0.12, 0)); // 0.12 tall
+  // Canonical torso joints
+  bones.pelvis = createBone('pelvis', new THREE.Vector3(0, 0, 0));
+  bones.lowerTorso = createBone('lower_torso', new THREE.Vector3(0, 0.1, 0));
+  bones.upperTorso = createBone('upper_torso', new THREE.Vector3(0, 0.15, 0));
+  bones.neckBase = createBone('neck_base', new THREE.Vector3(0, 0.15, 0));
+  bones.head = createBone('head', new THREE.Vector3(0, 0.1, 0));
 
   // Build spine hierarchy
-  bones.hips.add(bones.spine);
-  bones.spine.add(bones.chest);
-  bones.chest.add(bones.neck);
-  bones.neck.add(bones.head);
+  bones.pelvis.add(bones.lowerTorso);
+  bones.lowerTorso.add(bones.upperTorso);
+  bones.upperTorso.add(bones.neckBase);
+  bones.neckBase.add(bones.head);
 
   // Left arm - attach upper arm directly to chest (no separate shoulder bone)
   // Rotate upper arms so they hang down beside the torso (pointing -Y)
@@ -64,7 +236,7 @@ function createBoneHierarchy() {
   bones.leftForearm = createBone('forearm_l', new THREE.Vector3(-0.18, 0, 0));
   bones.leftHand = createBone('hand_l', new THREE.Vector3(-0.12, 0, 0));
 
-  bones.chest.add(bones.leftUpperArm);
+  bones.upperTorso.add(bones.leftUpperArm);
   bones.leftUpperArm.add(bones.leftForearm);
   bones.leftForearm.add(bones.leftHand);
 
@@ -77,7 +249,7 @@ function createBoneHierarchy() {
   bones.rightForearm = createBone('forearm_r', new THREE.Vector3(0.18, 0, 0));
   bones.rightHand = createBone('hand_r', new THREE.Vector3(0.12, 0, 0));
 
-  bones.chest.add(bones.rightUpperArm);
+  bones.upperTorso.add(bones.rightUpperArm);
   bones.rightUpperArm.add(bones.rightForearm);
   bones.rightForearm.add(bones.rightHand);
 
@@ -86,7 +258,7 @@ function createBoneHierarchy() {
   bones.leftLowerLeg = createBone('lower_leg_l', new THREE.Vector3(0, -0.2, 0));
   bones.leftFoot = createBone('foot_l', new THREE.Vector3(0, -0.18, 0));
 
-  bones.hips.add(bones.leftUpperLeg);
+  bones.pelvis.add(bones.leftUpperLeg);
   bones.leftUpperLeg.add(bones.leftLowerLeg);
   bones.leftLowerLeg.add(bones.leftFoot);
 
@@ -95,9 +267,15 @@ function createBoneHierarchy() {
   bones.rightLowerLeg = createBone('lower_leg_r', new THREE.Vector3(0, -0.2, 0));
   bones.rightFoot = createBone('foot_r', new THREE.Vector3(0, -0.18, 0));
 
-  bones.hips.add(bones.rightUpperLeg);
+  bones.pelvis.add(bones.rightUpperLeg);
   bones.rightUpperLeg.add(bones.rightLowerLeg);
   bones.rightLowerLeg.add(bones.rightFoot);
+
+  // Legacy aliases kept for adapter/test compatibility.
+  bones.hips = bones.pelvis;
+  bones.spine = bones.lowerTorso;
+  bones.chest = bones.upperTorso;
+  bones.neck = bones.neckBase;
 
   return bones;
 }
@@ -285,7 +463,11 @@ function calculateBoneBoxDimensions(bone, options = {}) {
     // Vertical bone (spine, neck, head, legs)
     direction = 'vertical';
     const isTorso =
-      bone.name.includes('spine') || bone.name.includes('chest') || bone.name.includes('hips');
+      bone.name.includes('spine') ||
+      bone.name.includes('chest') ||
+      bone.name.includes('hips') ||
+      bone.name.includes('torso') ||
+      bone.name.includes('pelvis');
     const width = isTorso ? torsoWidth : thickness;
     size = new THREE.Vector3(width, length, thickness * 1.5);
     // Use the actual Y direction (positive for up, negative for down)
@@ -322,52 +504,47 @@ function calculateBoneBoxDimensions(bone, options = {}) {
  * const meshes = createSimpleHumanoidMesh(skeleton, { color: 0xff9999, thickness: 0.1 });
  */
 export function createSimpleHumanoidMesh(skeleton, options = {}) {
-  const { color = 0xffdbac, showMesh = true, thickness = 0.08 } = options;
-  // const { color = 0x000000, showMesh = true, thickness = 0.08 } = options;
+  const { color = null, showMesh = true, thickness = 0.08, skin = null } = options;
   const bones = skeleton.userData.bones;
   const meshes = [];
+  const skinConfig = resolveHumanoidSkin(skin, color);
 
   if (!bones) {
     console.warn('Skeleton does not have bones in userData');
     return meshes;
   }
+  const roleMaterialMap = new Map();
 
-  const material = new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.5,
-    metalness: 0.0,
-    flatShading: true,
-  });
-
-  // List of bones to create meshes for
-  const boneNames = [
-    'hips',
-    'spine',
-    'chest',
-    'neck',
-    'head',
-    'leftUpperArm',
-    'leftForearm',
-    'leftHand',
-    'rightUpperArm',
-    'rightForearm',
-    'rightHand',
-    'leftUpperLeg',
-    'leftLowerLeg',
-    'leftFoot',
-    'rightUpperLeg',
-    'rightLowerLeg',
-    'rightFoot',
+  // Canonical list of mesh segments in anatomical order.
+  const meshSegments = [
+    { key: 'pelvis', meshName: 'pelvis' },
+    { key: 'lowerTorso', meshName: 'torso_lower' },
+    { key: 'upperTorso', meshName: 'torso_upper' },
+    { key: 'neckBase', meshName: 'neck' },
+    { key: 'head', meshName: 'head' },
+    { key: 'leftUpperArm', meshName: 'left_upper_arm' },
+    { key: 'leftForearm', meshName: 'left_forearm' },
+    { key: 'leftHand', meshName: 'left_hand' },
+    { key: 'rightUpperArm', meshName: 'right_upper_arm' },
+    { key: 'rightForearm', meshName: 'right_forearm' },
+    { key: 'rightHand', meshName: 'right_hand' },
+    { key: 'leftUpperLeg', meshName: 'left_upper_leg' },
+    { key: 'leftLowerLeg', meshName: 'left_lower_leg' },
+    { key: 'leftFoot', meshName: 'left_foot' },
+    { key: 'rightUpperLeg', meshName: 'right_upper_leg' },
+    { key: 'rightLowerLeg', meshName: 'right_lower_leg' },
+    { key: 'rightFoot', meshName: 'right_foot' },
   ];
 
-  for (const boneName of boneNames) {
+  for (const segment of meshSegments) {
+    const boneName = segment.key;
     const bone = bones[boneName];
     if (!bone) continue;
 
     // Calculate dimensions automatically
     const { size, offset } = calculateBoneBoxDimensions(bone, {
       thickness,
-      torsoWidth: boneName.includes('chest') ? 0.24 : boneName.includes('spine') ? 0.22 : 0.24,
+      torsoWidth: boneName === 'upperTorso' ? 0.25 : boneName === 'lowerTorso' ? 0.21 : 0.24,
     });
 
     if (boneName === 'head') {
@@ -378,9 +555,9 @@ export function createSimpleHumanoidMesh(skeleton, options = {}) {
     // Make hands smaller so they read better visually (similar to feet)
     if (boneName.includes('Hand')) {
       // Narrow, short box for hands
-      size.set(0.08, 0.04, 0.08);
+      size.set(0.06, 0.04, 0.07);
       const isLeft = boneName.includes('left');
-      offset.set(isLeft ? -0.02 : 0.02, 0, 0);
+      offset.set(isLeft ? -0.04 : 0.04, 0, 0);
     } else if (boneName.includes('Foot')) {
       // Slightly flattened foot box to provide toe/heel shape
       size.set(0.08, 0.04, 0.16);
@@ -409,11 +586,16 @@ export function createSimpleHumanoidMesh(skeleton, options = {}) {
     // }
 
     const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = `${boneName}_mesh`;
+    const role = getBoneSkinRole(boneName);
+    if (!roleMaterialMap.has(role)) {
+      roleMaterialMap.set(role, createSkinMaterial(role, skinConfig));
+    }
+    const mesh = new THREE.Mesh(geometry, roleMaterialMap.get(role));
+    mesh.name = `${segment.meshName}_mesh`;
     mesh.visible = showMesh;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData.skinRole = role;
 
     attachRigidMeshToBone(bone, mesh, offset);
     meshes.push(mesh);
@@ -421,6 +603,7 @@ export function createSimpleHumanoidMesh(skeleton, options = {}) {
 
   // Store mesh references in skeleton userData
   skeleton.userData.bodyMeshes = meshes;
+  skeleton.userData.activeSkin = skinConfig;
 
   return meshes;
 }
